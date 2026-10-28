@@ -284,6 +284,7 @@
     <div class="form-group"><label>Nama Lengkap:</label><input type="text" id="nama" placeholder="Masukkan nama lengkap"></div>
     <div class="form-group"><label>Nomor Absen:</label><input type="text" id="nomor" placeholder="Masukkan nomor absen"></div>
     <div class="form-group"><label>Kelas:</label><input type="text" id="kelas" placeholder="Contoh: XI DKV 1"></div>
+    <div class="form-group"><label>Mata Pelajaran:</label><select id="selectMapelSiswa"></select></div>
     <div class="form-group"><label>Token Ujian:</label><input type="text" id="tokenUjian" placeholder="Masukkan token dari guru"></div>
     <div style="display:flex; gap:10px;">
       <button class="btn btn-success" onclick="mulaiUjian()" style="flex:1;">▶ Mulai Ujian (Fullscreen)</button>
@@ -353,6 +354,27 @@
     </div>
 
     <div class="panel">
+      <h3>📚 Database Mata Pelajaran (CRUD &amp; Jumlah Soal)</h3>
+      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-secondary);">Kelola daftar mata pelajaran yang diujikan. Siswa dapat memilih mata pelajaran sesuai ujian kelas.</p>
+      <div class="panel-row" style="margin-bottom:12px;">
+        <button class="btn btn-success btn-sm" onclick="bukaModalTambahMapel()">+ Tambah Mata Pelajaran</button>
+      </div>
+      <div id="statusMapelDb"></div>
+      <div style="overflow-x:auto;">
+        <table class="crud-table" id="tabelMapel">
+          <thead>
+            <tr>
+              <th style="width:50px;">No</th>
+              <th>Mata Pelajaran</th>
+              <th style="width:150px;">Jumlah Soal</th>
+              <th style="width:160px;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="bodyTabelMapel"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
       <h3> 1. Edit Judul &amp; Token Ujian</h3>
       <div class="form-group"><label>Judul Utama:</label><input type="text" id="inputJudul" class="input-judul" placeholder="Contoh: Evaluasi PKK DKV BAB 1"></div>
       <div class="form-group"><label>Subjudul:</label><input type="text" id="inputSubJudul" class="input-judul" placeholder="Contoh: Kewirausahaan..."></div>
@@ -402,8 +424,12 @@
     </div>
 
     <div class="panel">
-      <h3>📊 4. Sinkron Soal dari Excel</h3>
-      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-secondary);">Format: Kolom A=Pertanyaan, B-F=Opsi A-E, G=Jawaban Benar (A/B/C/D/E)</p>
+      <h3>📊 4. Sinkron Soal dari Excel per Mata Pelajaran</h3>
+      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-secondary);">Pilih mata pelajaran, lalu impor atau download template soal Excel khusus mata pelajaran tersebut.<br>Format: Kolom A=Pertanyaan, B-F=Opsi A-E, G=Jawaban Benar (A/B/C/D/E)</p>
+      <div class="panel-row" style="margin-bottom:12px;">
+        <label style="margin:0; font-weight:bold;">Mata Pelajaran:</label>
+        <select id="selectMapelImport" onchange="onMapelImportChange()" style="min-width:200px;"></select>
+      </div>
       <div class="panel-row">
         <div class="file-input-wrapper">
           <button class="btn btn-warning">📁 Pilih File Excel</button>
@@ -586,6 +612,7 @@
         "Nama Lengkap",
         "Nomor Absen",
         "Kelas",
+        "Mata Pelajaran",
         "Nilai Ujian",
         "Nilai Maksimal",
         "KKM",
@@ -603,6 +630,7 @@
       data.nama || "",
       data.nomor || "",
       data.kelas || "",
+      data.mataPelajaran || "",
       data.nilai !== undefined ? data.nilai : 0,
       data.nilaiMaksimal || 100,
       data.kkm || 75,
@@ -722,6 +750,17 @@
   </div>
 </div>
 
+<div class="modal" id="mapelModal" style="display: none;">
+  <div class="modal-content">
+    <h3 id="mapelModalTitle">📚 Tambah Mata Pelajaran</h3>
+    <input type="hidden" id="editMapelIndex" value="-1">
+    <div class="form-group"><label>Nama Mata Pelajaran:</label><input type="text" id="modalNamaMapel" placeholder="Contoh: Informatika"></div>
+    <div style="margin-top:15px;">
+      <button class="btn btn-success" onclick="simpanMapelModal()">💾 Simpan</button>
+      <button class="btn-cancel" onclick="tutupModal('mapelModal')">Batal</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="resetModal" style="display: none;">
   <div class="modal-content">
     <h3>🔐 Reset Ujian</h3>
@@ -738,6 +777,19 @@
 const HTML_VERSION = "5.13";
 
 // __CONFIG_START__
+const MAPEL_DEFAULT = ["PAI", "Informatika", "Matematika"];
+const SOAL_DEFAULT = [{"q":"Apa istilah dalam Al-Qur'an untuk \"berlomba-lomba dalam kebaikan\" seperti yang diperintahkan dalam Q.S. Al-Ma'idah/5: 48?","o":["Fastabiqul khairat","Ta'awun","Tawazun","Amar makruf","Nahi munkar"],"a":0},{"q":"Menurut Kamus Besar Bahasa Indonesia (KBBI), apa arti dari kata \"kompetisi\"?","o":["Kerjasama","Persaingan","Perdamaian","Persatuan","Toleransi"],"a":1},{"q":"Kitab suci yang diturunkan kepada Nabi Muhammad Saw. sebagai pembenar kitab-kitab sebelumnya adalah...","o":["Taurat","Zabur","Al-Qur'an","Injil","Suhuf"],"a":2},{"q":"Salah satu perilaku yang mencerminkan kandungan Q.S. Al-Ma'idah/5: 48 dalam kehidupan sehari-hari adalah...","o":["Mengucapkan hamdalah saat makan","Membuang sampah di sungai","Bergaul tanpa batasan syariat","Mengucapkan basmalah saat memulai aktivitas","Menunda-nunda waktu salat"],"a":3},{"q":"Siapakah perawi hadis yang menyebutkan tentang perintah segera beramal sebelum datangnya fitnah seperti malam yang gelap gulita?","o":["Abdullah bin Umar","Anas bin Malik","Umar bin Khattab","Aisyah R.A.","Abu Hurairah R.A."],"a":4},{"q":"Apa makna awal dari kata \"syir'ah\" atau \"syari'ah\" secara bahasa menurut materi?","o":["Air yang banyak atau jalan menuju sumber air","Jalan yang luas","Agama yang bersifat umum","Hukum yang tidak bisa diubah","Petunjuk yang samar"],"a":0},{"q":"Dalam Q.S. Al-Ma'idah/5: 48, Allah Swt. menyatakan bahwa jika Dia menghendaki, niscaya Dia akan menjadikan manusia...","o":["Terpecah belah","Satu umat saja","Selalu berselisih","Tidak memiliki syariat","Bebas dari ujian"],"a":1},{"q":"Menurut Dr. Abdullah bin Muhammad Alu Syaikh dalam kitab Lubab at-Tafsir, maksud \"fastabiqul khairat\" adalah...","o":["Menunda amal sampai tua","Mengikuti syariat umat terdahulu","Perintah segera mengamalkan kebaikan dan mengikuti syariat yang menasakh sebelumnya","Berlomba mengumpulkan harta dunia","Mengubah isi kitab suci sesuai hawa nafsu"],"a":2},{"q":"Salah satu kandungan Q.S. Al-Ma'idah/5: 48 adalah bahwa Al-Qur'an adalah kitab suci yang...","o":["Bisa diubah oleh manusia","Hanya berlaku untuk umat Nabi Musa","Tidak memiliki petunjuk","Tidak akan berubah meskipun satu huruf","Mengandung syariat yang sama persis dengan Taurat"],"a":3},{"q":"Apa tujuan utama dari kompetisi dalam kebaikan menurut ajaran Islam?","o":["Mendapatkan pujian dari orang lain","Mengalahkan pesaing dengan cara curang","Menunjukkan kekayaan kepada sesama","Mendapatkan kekuasaan politik","Mencari rida Allah Swt."],"a":4},{"q":"Dalam kajian ilmu tajwid Q.S. Al-Ma'idah/5: 48, hukum bacaan \"Mad Jaiz Munfasil\" terjadi karena...","o":["Mad Tabi'i diikuti Hamzah bukan dalam satu kata","Mad Tabi'i diikuti Hamzah dalam satu kata","Nun mati bertemu huruf ba","Mim mati bertemu huruf ba","Huruf mad bertemu huruf hidup"],"a":0},{"q":"Kata \"Minhaj\" dalam Q.S. Al-Ma'idah/5: 48 memiliki makna...","o":["Air yang sedikit","Jalan yang luas","Agama yang universal","Hukum yang keras","Umat yang satu"],"a":1},{"q":"Mengapa syariat setiap umat bisa berbeda-beda menurut penjelasan dalam materi?","o":["Karena Allah Swt. tidak konsisten","Karena kitab-kitab sebelumnya hilang","Sesuai dengan kondisi dan perkembangan masyarakat pada zamannya","Karena para nabi saling berselisih","Karena manusia tidak mampu menjalankan satu hukum"],"a":2},{"q":"Perhatikan perilaku: \"Salat tepat waktu dan menjauhi pergaulan kurang baik.\" Perilaku ini mencerminkan poin...","o":["Menggunakan akal untuk berfilsafat","Mengubah syariat sesuai zaman","Menjual agama dengan kenikmatan dunia","Selalu menaati peraturan-Nya dan menjauhi larangan-Nya","Berlomba-lomba dalam hal duniawi"],"a":3},{"q":"Dalam hadis riwayat Muslim, orang yang menjual agamanya dengan kenikmatan dunia diibaratkan mengalami perubahan iman seperti...","o":["Siang menjadi malam","Air menjadi es","Pohon yang tumbang","Matahari yang terbit","Pagi mukmin, sore kafir (atau sebaliknya)"],"a":4},{"q":"Menurut Hamka dalam Tafsir Al-Azhar, kata \"ilaika\" (kepadamu) dalam Q.S. Al-Ma'idah/5: 48 ditujukan kepada Nabi Muhammad Saw. sebagai...","o":["Penutup para nabi dan rasul yang menyempurnakan risalah sebelumnya","Pembawa syariat yang sama persis dengan Nabi Musa","Pemimpin politik umat Islam di Madinah","Satu-satunya nabi yang menerima kitab suci","Penjaga harta benda umat"],"a":0},{"q":"Apa perbedaan mendasar antara \"din\" (agama) dan \"syariat\" berdasarkan makna kosakata?","o":["Din bisa dibatalkan, syariat tidak bisa dibatalkan","Din bersifat umum dan mencakup semua umat, sedangkan syariat adalah tuntunan untuk umat/nabi tertentu yang bisa diganti","Din khusus untuk Nabi Muhammad, syariat untuk semua nabi","Din adalah hukum duniawi, syariat adalah hukum ukhrawi","Tidak ada perbedaan, keduanya bermakna sama"],"a":1},{"q":"Salah satu sikap yang mencerminkan kandungan hadis tentang kompetisi dalam kebaikan adalah...","o":["Menunda amal saleh sampai usia tua","Mengisolasi diri dari masyarakat","Selalu waspada terhadap kemungkinan terjadinya fitnah dengan melakukan amal saleh","Mengikuti hawa nafsu dalam beragama","Berselisih paham dengan umat lain"],"a":2},{"q":"Hukum bacaan \"Mad Wajib Muttasil\" terjadi karena...","o":["Mad Tabi'i bertemu huruf mati karena waqaf","Mad Tabi'i diikuti Hamzah dalam satu kata","Mad Tabi'i diikuti Hamzah bukan dalam satu kata","Nun mati bertemu huruf izhar","Mim mati bertemu huruf mim"],"a":3},{"q":"Apa yang dimaksud dengan \"amal saleh\" menurut istilah dalam konteks kompetisi kebaikan?","o":["Perbuatan yang hanya menguntungkan diri sendiri","Perbuatan yang dilakukan untuk mendapatkan pujian","Perbuatan yang merusak lingkungan demi kemajuan","Perbuatan yang mendatangkan maslahat bagi diri sendiri dan orang lain serta tidak merusak","Perbuatan yang mengikuti hawa nafsu"],"a":4},{"q":"Asbabun nuzul Q.S. Al-Ma'idah/5: 48 mengingatkan umat Islam agar tidak bersikap seperti umat Nabi Musa A.S. yang...","o":["Tidak mengamalkan dan menegakkan apa yang terkandung dalam kitab yang diturunkan kepada mereka","Selalu berlomba-lomba dalam kebaikan","Menjaga keaslian kitab suci dengan sempurna","Selalu mengikuti syariat yang baru","Tidak pernah berselisih paham"],"a":0},{"q":"Dalam Q.S. Al-Ma'idah/5: 48, Allah Swt. menguji manusia terhadap karunia yang telah diberikan. Jawaban yang seharusnya diberikan manusia adalah...","o":["Bersikap sombong","Berlomba-lomba untuk berbuat kebajikan","Mengabaikan nikmat tersebut","Mengklaim nikmat itu hasil usaha sendiri semata","Menyalahkan orang lain atas kekurangan"],"a":1},{"q":"Manakah di bawah ini yang merupakan contoh perilaku \"peduli terhadap sekitar\" yang mencerminkan Q.S. Al-Ma'idah/5: 48?","o":["Membuang sampah sembarangan","Menjaga kebersihan lingkungan","Mengikuti pergaulan yang kurang baik","Meninggalkan salat tepat waktu","Bersikap acuh tak acuh terhadap tetangga"],"a":2},{"q":"Apa tujuan dari Allah Swt. menjadikan syariat yang berbeda-beda untuk tiap-tiap umat?","o":["Agar umat saling bermusuhan","Agar manusia bingung memilih agama","Agar kitab suci mudah diubah","Untuk menguji sejauh mana mereka dapat mengimplementasikan syariat-Nya yang tertuang dalam kitab samawi masing-masing","Agar syariat lama tetap dipertahankan selamanya"],"a":3},{"q":"Dalam hadis riwayat Muslim, fitnah diibaratkan seperti...","o":["Angin yang berhembus pelan","Air yang mengalir tenang","Cahaya matahari di siang hari","Hujan yang menyegarkan","Malam yang gelap gulita"],"a":4},{"q":"Salah satu syarat berkompetisi dalam kebaikan agar diterima oleh Allah Swt. adalah...","o":["Memiliki niat yang ikhlas karena Allah Swt.","Melakukan dengan cara-cara yang curang","Bertujuan untuk mengalahkan lawan secara fisik","Mencari keuntungan duniawi semata","Mengikuti hawa nafsu"],"a":0},{"q":"Apa yang akan diberitahukan Allah Swt. kepada hamba-Nya ketika mereka kembali kepada-Nya di akhirat kelak?","o":["Jumlah harta yang mereka kumpulkan","Apa saja yang dahulu pernah mereka perselisihkan saat menjalani kehidupan di dunia","Nama-nama pesaing mereka di dunia","Rahasia yang mereka simpan dari sesama manusia","Cara-cara untuk kembali ke dunia"],"a":1},{"q":"Dalam konteks Q.S. Al-Ma'idah/5: 48, apa fungsi Al-Qur'an terhadap kitab-kitab yang diturunkan sebelumnya?","o":["Menghapus dan memusnahkan fisiknya","Sebagai pembenar dan penjaga (acuan kebenaran) terhadapnya","Sebagai kitab yang isinya bertentangan total","Sebagai kitab yang hanya berlaku untuk bangsa Arab","Sebagai kitab yang sulit dipahami"],"a":2},{"q":"Jika seseorang beramal saleh dengan niat agar dipuji oleh orang lain, maka ia telah melanggar prinsip...","o":["Amar makruf nahi munkar","Istikamah dalam mengerjakan kebaikan dan niat karena Allah Swt.","Menggunakan akal sehat","Berlomba-lomba dalam kebaikan","Toleransi antarumat beragama"],"a":3},{"q":"Berdasarkan makna kosakata, mengapa seseorang yang bertahan pada syariat lama padahal keadaan sudah berubah akan tersesat?","o":["Karena syariat lama lebih unggul","Karena perubahan dilarang dalam agama","Karena semua syariat sama saja","Karena manusia tidak memerlukan tuntunan","Karena setiap terjadi perubahan kondisi, Allah Swt. akan mengubah syariat, dan yang tidak mengikuti minhaj akan tersesat"],"a":4},{"q":"Analisis kasus: Seorang siswa membantu teman yang kesulitan memahami pelajaran tanpa mengharapkan imbalan secara konsisten. Perilaku ini paling tepat mencerminkan poin...","o":["Berlomba-lomba dalam kebaikan merupakan bentuk ungkapan rasa syukur atas limpahan anugerah Allah Swt.","Perintah untuk mengubah syariat sesuai keinginan sendiri","Anjuran untuk berselisih paham demi kebenaran","Kewajiban untuk mengisolasi diri dari lingkungan","Larangan untuk menggunakan akal dalam belajar"],"a":0},{"q":"Dalam Tafsir Al-Azhar, Hamka menyimpulkan bahwa agama yang disampaikan oleh para nabi memiliki satu pokok dan satu tujuan. Apa tujuan tersebut?","o":["Kekuasaan politik","Tauhid","Kekayaan materi","Dominasi budaya","Persatuan suku"],"a":1},{"q":"Pernyataan yang sesuai dengan isi dan kandungan Q.S. Al-Ma'idah/5: 48 adalah: (1) Al-Qur'an membenarkan kitab sebelumnya, (2) Syariat setiap umat berbeda sesuai kondisi zamannya, (3) Manusia tidak perlu menggunakan akal, (4) Al-Qur'an tidak akan berubah meskipun satu huruf.","o":["(1), (2), dan (3)","(1), (3), dan (4)","(1), (2), dan (4)","(2), (3), dan (4)","(3) dan (4) saja"],"a":2},{"q":"Seorang dai menekankan bahwa dalam berdakwah harus melalui \"minhaj\" yang jelas sebelum mencapai \"syariat\". Berdasarkan makna kosakata, hal ini mengandung isyarat bahwa...","o":["Minhaj adalah tujuan akhir yang tidak bisa diubah","Syariat tidak memerlukan jalan untuk mencapainya","Minhaj hanya berlaku untuk umat terdahulu","Ada jalan menuju syariat, dan siapa yang mengikuti minhaj akan sampai kepada syariat","Syariat dan minhaj adalah dua konsep yang saling meniadakan"],"a":3},{"q":"Dalam hadis riwayat Muslim, seseorang bisa menjual agamanya dengan barang kenikmatan dunia. Sikap paling tepat untuk menghindari hal tersebut adalah...","o":["Menindari semua bentuk harta benda","Menarik diri dari kehidupan bermasyarakat","Menunda amal saleh hingga usia senja","Mengikuti semua keinginan hawa nafsu","Selalu waspada terhadap fitnah dan memanfaatkan waktu untuk berzikir serta menjaga keimanan"],"a":4},{"q":"Mengapa Q.S. Al-Ma'idah/5: 48 menekankan untuk \"memutuskan perkara mereka menurut aturan yang diturunkan Allah\"?","o":["Karena aturan Allah adalah kebenaran mutlak yang mencegah penyimpangan dan pengubahan oleh orang yang mencari keuntungan diri","Karena manusia tidak memiliki kemampuan berpikir sama sekali","Karena aturan Allah selalu sama dengan aturan buatan manusia","Karena keputusan manusia selalu lebih adil daripada keputusan Allah","Karena aturan Allah hanya berlaku untuk urusan ibadah mahdah saja"],"a":0},{"q":"Analisis kasus: Dua kelompok berselisih mengenai detail ibadah sunah dan saling memaksakan kehendak dengan keras. Berdasarkan Q.S. Al-Ma'idah/5: 48, sikap yang seharusnya diambil adalah...","o":["Saling menjatuhkan untuk membuktikan kebenaran","Berlomba-lomba dalam berbuat kebaikan dan menyadari bahwa hanya Allah yang akan menjelaskan apa yang mereka perselisihkan di akhirat","Meninggalkan ibadah sama sekali agar tidak berselisih","Mengubah isi Al-Qur'an agar sesuai dengan kelompoknya","Mengikuti hawa nafsu kelompok masing-masing"],"a":1},{"q":"Dalam konteks \"fastabiqul khairat\", apa yang dimaksud dengan \"amal saleh\" yang tidak merusak?","o":["Amal yang hanya menguntungkan satu pihak","Amal yang dilakukan dengan terpaksa","Perbuatan yang mendatangkan maslahat bagi diri sendiri dan orang lain tanpa menimbulkan kerusakan","Perbuatan yang melanggar aturan negara","Perbuatan yang mengutamakan kepentingan golongan"],"a":2},{"q":"Perhatikan hukum tajwid berikut: \"Mad Tabi'i bertemu dengan huruf mati karena waqaf\". Hukum bacaan ini disebut...","o":["Mad Jaiz Munfasil","Mad Wajib Muttasil","Ikhfa' Syafawi","Mad 'Arid Lissukun","Izhar Qamariyyah"],"a":3},{"q":"Apa hubungan antara \"berlomba-lomba dalam kebaikan\" dengan \"rasa syukur\" menurut penjelasan tafsir dalam materi?","o":["Tidak ada hubungan sama sekali","Berlomba-lomba dalam kebaikan adalah bentuk kompetisi duniawi","Rasa syukur hanya diucapkan dengan lisan tanpa perbuatan","Berlomba-lomba dalam kebaikan adalah kewajiban yang memberatkan, bukan syukur","Berlomba-lomba berbuat kebajikan merupakan salah satu bentuk ungkapan rasa syukur kepada Allah Swt. atas semua rahmat yang telah dianugerahkan"],"a":4},{"q":"Jika seseorang berargumen bahwa syariat Islam sudah tidak relevan dengan zaman modern, maka berdasarkan materi, argumen tersebut keliru karena...","o":["Syariat bisa mengalami perubahan sesuai kondisi, tetapi dasar dan landasan agama (tauhid/keimanan) tidak berubah, dan Al-Qur'an sebagai penjaga kebenaran tetap berlaku","Syariat Islam tidak pernah mengalami perubahan sejak zaman Nabi Adam","Zaman modern tidak memerlukan aturan agama","Semua syariat umat terdahulu harus dihidupkan kembali","Akal manusia lebih tinggi daripada wahyu Allah"],"a":0},{"q":"Dalam hadis tentang fitnah, disebutkan \"Di pagi hari, seorang laki-laki dalam keadaan mukmin, lalu kafir di sore harinya.\" Ini mengindikasikan bahwa...","o":["Iman seseorang tidak mungkin berubah","Iman manusia bisa mengalami pasang-surut dan sangat rentan terhadap fitnah jika tidak segera beramal saleh","Waktu pagi adalah waktu yang paling buruk untuk beribadah","Sore hari adalah waktu di mana semua orang menjadi kafir","Laki-laki lebih mudah kafir daripada perempuan"],"a":1},{"q":"Manakah kombinasi perilaku yang paling tepat mencerminkan pemahaman Q.S. Al-Ma'idah/5: 48 dan hadis tentang kompetisi kebaikan secara simultan?","o":["Rajin salat tetapi suka bergosip tentang keburukan orang lain","Berlomba mengumpulkan harta untuk pamer, lalu bersedekah sedikit","Mengucapkan basmalah sebelum beraktivitas, istikamah dalam kebaikan, dan memanfaatkan waktu untuk amal saleh sebelum datang fitnah","Menunda amal baik sampai ada waktu luang yang panjang","Mengikuti hawa nafsu dengan alasan kebebasan berekspresi"],"a":2},{"q":"Mengapa Allah Swt. tidak menjadikan manusia sebagai satu umat saja, padahal Dia mampu melakukannya?","o":["Karena Allah Swt. tidak memiliki kemampuan tersebut","Karena manusia menolak untuk disatukan","Karena satu umat akan lebih mudah diatur oleh penguasa","Karena Allah Swt. hendak menguji manusia tentang karunia dan nikmat yang telah diberikan-Nya","Karena perbedaan adalah kesalahan yang harus dihilangkan"],"a":3},{"q":"Dalam konteks Q.S. Al-Ma'idah/5: 48, apa yang dimaksud dengan \"kebenaran yang telah datang kepadamu\"?","o":["Kebenaran yang dibuat oleh para filsuf","Kebenaran yang sesuai dengan keinginan mayoritas","Kebenaran yang bisa diubah sesuai kebutuhan","Kebenaran yang hanya bersifat relatif","Kebenaran yang dibawa oleh Al-Qur'an sebagai pembenar kitab-kitab sebelumnya"],"a":4},{"q":"Analisis kasus: Seorang pelajar menegur temannya yang menyontek dengan baik dan tetap membantu temannya belajar setelahnya. Tindakan ini mencerminkan...","o":["Peduli terhadap sekitar dan istikamah dalam kebaikan tanpa meninggalkan kebenaran","Ikut menyontek agar teman merasa senang","Melaporkan teman kepada pihak berwajib tanpa menegur terlebih dahulu","Membiarkan saja karena bukan urusannya","Bersaing untuk mendapatkan nilai tertinggi dengan cara curang"],"a":0},{"q":"Apa perbedaan utama antara kompetisi dalam kebaikan (fastabiqul khairat) dengan kompetisi duniawi yang tercela?","o":["Kompetisi kebaikan tidak memerlukan usaha keras","Kompetisi kebaikan dilakukan dengan niat ikhlas, cara yang benar, dan bertujuan mencari rida Allah, sedangkan kompetisi duniawi yang tercela sering kali mengikuti hawa nafsu dan menghalalkan segala cara","Kompetisi kebaikan hanya boleh dilakukan di masjid","Kompetisi duniawi selalu dilarang dalam semua kondisi","Tidak ada perbedaan, keduanya sama saja"],"a":1},{"q":"Berdasarkan penjelasan Dr. Abdullah bin Muhammad Alu Syaikh, \"fastabiqul khairat\" juga berarti mengikuti syariat yang Allah jadikan sebagai penasakh. Apa maksud 'penasakh' di sini?","o":["Syariat yang memperkuat syariat lama tanpa perubahan","Syariat yang menghapus atau menggantikan syariat-syariat sebelumnya","Syariat yang hanya berlaku untuk umat Yahudi dan Nasrani","Syariat yang tidak memiliki dasar hukum","Syariat yang bersifat sementara"],"a":2},{"q":"Dalam memahami dinamika syariat dan minhaj, pernyataan manakah yang paling tepat menggambarkan konsekuensi logis dari pemahaman tersebut?","o":["Minhaj tidak ada hubungannya dengan syariat","Syariat tidak pernah berubah dalam kondisi apa pun","Din (agama) bisa dibatalkan oleh syariat yang baru","Siapa yang mengikuti minhaj akan sampai kepada syariat, dan yang sampai kepada syariat berarti telah sampai kepada agama","Perubahan kondisi masyarakat tidak mempengaruhi penerapan syariat"],"a":3},{"q":"Kesimpulan akhir dari pembelajaran Q.S. Al-Ma'idah/5: 48 dan hadis tentang kompetisi dalam kebaikan adalah bahwa umat Islam harus...","o":["Mengisolasi diri dari umat lain","Mengubah isi Al-Qur'an agar sesuai dengan tantangan zaman","Mengikuti hawa nafsu dalam mengambil keputusan","Menunda amal saleh hingga usia tua","Senantiasa berlomba-lomba dalam kebaikan, memegang teguh Al-Qur'an sebagai acuan, dan menyadari bahwa semua akan kembali dan dipertanggungjawabkan di hadapan Allah Swt."],"a":4}];
+const SOAL_MAPEL_DEFAULT = {
+  "PAI": SOAL_DEFAULT,
+  "Informatika": [
+    {"q":"Apa kepanjangan dari CPU dalam sistem komputer?","o":["Central Processing Unit","Central Power Unit","Control Processing Unit","Computer Personal Unit","Central Personal Unit"],"a":0},
+    {"q":"Manakah di bawah ini yang merupakan perangkat masukan (input device)?","o":["Monitor","Printer","Keyboard","Speaker","Proyektor"],"a":2}
+  ],
+  "Matematika": [
+    {"q":"Berapakah hasil dari 15 x 12?","o":["160","170","180","190","200"],"a":2},
+    {"q":"Berapakah akar kuadrat dari 144?","o":["10","11","12","13","14"],"a":2}
+  ]
+};
 const JUDUL_DEFAULT = "PAI";
 const SUBJUDUL_DEFAULT = "MATERI BAB 1";
 const PASSWORD_DEFAULT = "guru123";
@@ -753,7 +805,6 @@ const NILAI_KKM_DEFAULT = 75;
 const TAMPIL_NILAI_DEFAULT = true;
 const DATA_SISWA_DEFAULT = [{"nama":"Ahmad Rizky","nomor":"01","kelas":"X DKV 1"},{"nama":"Budi Santoso","nomor":"02","kelas":"X DKV 1"},{"nama":"Citra Dewi","nomor":"01","kelas":"X DKV 2"},{"nama":"Dian Pratama","nomor":"02","kelas":"X DKV 2"}];
 const SPREADSHEET_MAP_DEFAULT = [{"kelas":"X DKV 1","url":"https://script.google.com/macros/s/AKfycbyRIK7uFyFh56bed-Fwlr1yVdAz-2vqDwpEAe7jdFQuqeO5lmo2L53w8rJ_IFmpuAsesQ/exec"},{"kelas":"X DKV 2","url":"https://script.google.com/macros/s/AKfycbwEE3VHCyu0zgOYe7gch7ltmj78FVMWLSaKN1ueKv09_GR3FTceplf987eKjWpVVyUJ/exec"}];
-const SOAL_DEFAULT = [{"q":"Apa istilah dalam Al-Qur'an untuk \"berlomba-lomba dalam kebaikan\" seperti yang diperintahkan dalam Q.S. Al-Ma'idah/5: 48?","o":["Fastabiqul khairat","Ta'awun","Tawazun","Amar makruf","Nahi munkar"],"a":0},{"q":"Menurut Kamus Besar Bahasa Indonesia (KBBI), apa arti dari kata \"kompetisi\"?","o":["Kerjasama","Persaingan","Perdamaian","Persatuan","Toleransi"],"a":1},{"q":"Kitab suci yang diturunkan kepada Nabi Muhammad Saw. sebagai pembenar kitab-kitab sebelumnya adalah...","o":["Taurat","Zabur","Al-Qur'an","Injil","Suhuf"],"a":2},{"q":"Salah satu perilaku yang mencerminkan kandungan Q.S. Al-Ma'idah/5: 48 dalam kehidupan sehari-hari adalah...","o":["Mengucapkan hamdalah saat makan","Membuang sampah di sungai","Bergaul tanpa batasan syariat","Mengucapkan basmalah saat memulai aktivitas","Menunda-nunda waktu salat"],"a":3},{"q":"Siapakah perawi hadis yang menyebutkan tentang perintah segera beramal sebelum datangnya fitnah seperti malam yang gelap gulita?","o":["Abdullah bin Umar","Anas bin Malik","Umar bin Khattab","Aisyah R.A.","Abu Hurairah R.A."],"a":4},{"q":"Apa makna awal dari kata \"syir'ah\" atau \"syari'ah\" secara bahasa menurut materi?","o":["Air yang banyak atau jalan menuju sumber air","Jalan yang luas","Agama yang bersifat umum","Hukum yang tidak bisa diubah","Petunjuk yang samar"],"a":0},{"q":"Dalam Q.S. Al-Ma'idah/5: 48, Allah Swt. menyatakan bahwa jika Dia menghendaki, niscaya Dia akan menjadikan manusia...","o":["Terpecah belah","Satu umat saja","Selalu berselisih","Tidak memiliki syariat","Bebas dari ujian"],"a":1},{"q":"Menurut Dr. Abdullah bin Muhammad Alu Syaikh dalam kitab Lubab at-Tafsir, maksud \"fastabiqul khairat\" adalah...","o":["Menunda amal sampai tua","Mengikuti syariat umat terdahulu","Perintah segera mengamalkan kebaikan dan mengikuti syariat yang menasakh sebelumnya","Berlomba mengumpulkan harta dunia","Mengubah isi kitab suci sesuai hawa nafsu"],"a":2},{"q":"Salah satu kandungan Q.S. Al-Ma'idah/5: 48 adalah bahwa Al-Qur'an adalah kitab suci yang...","o":["Bisa diubah oleh manusia","Hanya berlaku untuk umat Nabi Musa","Tidak memiliki petunjuk","Tidak akan berubah meskipun satu huruf","Mengandung syariat yang sama persis dengan Taurat"],"a":3},{"q":"Apa tujuan utama dari kompetisi dalam kebaikan menurut ajaran Islam?","o":["Mendapatkan pujian dari orang lain","Mengalahkan pesaing dengan cara curang","Menunjukkan kekayaan kepada sesama","Mendapatkan kekuasaan politik","Mencari rida Allah Swt."],"a":4},{"q":"Dalam kajian ilmu tajwid Q.S. Al-Ma'idah/5: 48, hukum bacaan \"Mad Jaiz Munfasil\" terjadi karena...","o":["Mad Tabi'i diikuti Hamzah bukan dalam satu kata","Mad Tabi'i diikuti Hamzah dalam satu kata","Nun mati bertemu huruf ba","Mim mati bertemu huruf ba","Huruf mad bertemu huruf hidup"],"a":0},{"q":"Kata \"Minhaj\" dalam Q.S. Al-Ma'idah/5: 48 memiliki makna...","o":["Air yang sedikit","Jalan yang luas","Agama yang universal","Hukum yang keras","Umat yang satu"],"a":1},{"q":"Mengapa syariat setiap umat bisa berbeda-beda menurut penjelasan dalam materi?","o":["Karena Allah Swt. tidak konsisten","Karena kitab-kitab sebelumnya hilang","Sesuai dengan kondisi dan perkembangan masyarakat pada zamannya","Karena para nabi saling berselisih","Karena manusia tidak mampu menjalankan satu hukum"],"a":2},{"q":"Perhatikan perilaku: \"Salat tepat waktu dan menjauhi pergaulan kurang baik.\" Perilaku ini mencerminkan poin...","o":["Menggunakan akal untuk berfilsafat","Mengubah syariat sesuai zaman","Menjual agama dengan kenikmatan dunia","Selalu menaati peraturan-Nya dan menjauhi larangan-Nya","Berlomba-lomba dalam hal duniawi"],"a":3},{"q":"Dalam hadis riwayat Muslim, orang yang menjual agamanya dengan kenikmatan dunia diibaratkan mengalami perubahan iman seperti...","o":["Siang menjadi malam","Air menjadi es","Pohon yang tumbang","Matahari yang terbit","Pagi mukmin, sore kafir (atau sebaliknya)"],"a":4},{"q":"Menurut Hamka dalam Tafsir Al-Azhar, kata \"ilaika\" (kepadamu) dalam Q.S. Al-Ma'idah/5: 48 ditujukan kepada Nabi Muhammad Saw. sebagai...","o":["Penutup para nabi dan rasul yang menyempurnakan risalah sebelumnya","Pembawa syariat yang sama persis dengan Nabi Musa","Pemimpin politik umat Islam di Madinah","Satu-satunya nabi yang menerima kitab suci","Penjaga harta benda umat"],"a":0},{"q":"Apa perbedaan mendasar antara \"din\" (agama) dan \"syariat\" berdasarkan makna kosakata?","o":["Din bisa dibatalkan, syariat tidak bisa dibatalkan","Din bersifat umum dan mencakup semua umat, sedangkan syariat adalah tuntunan untuk umat/nabi tertentu yang bisa diganti","Din khusus untuk Nabi Muhammad, syariat untuk semua nabi","Din adalah hukum duniawi, syariat adalah hukum ukhrawi","Tidak ada perbedaan, keduanya bermakna sama"],"a":1},{"q":"Salah satu sikap yang mencerminkan kandungan hadis tentang kompetisi dalam kebaikan adalah...","o":["Menunda amal saleh sampai usia tua","Mengisolasi diri dari masyarakat","Selalu waspada terhadap kemungkinan terjadinya fitnah dengan melakukan amal saleh","Mengikuti hawa nafsu dalam beragama","Berselisih paham dengan umat lain"],"a":2},{"q":"Hukum bacaan \"Mad Wajib Muttasil\" terjadi karena...","o":["Mad Tabi'i bertemu huruf mati karena waqaf","Mad Tabi'i diikuti Hamzah dalam satu kata","Mad Tabi'i diikuti Hamzah bukan dalam satu kata","Nun mati bertemu huruf izhar","Mim mati bertemu huruf mim"],"a":3},{"q":"Apa yang dimaksud dengan \"amal saleh\" menurut istilah dalam konteks kompetisi kebaikan?","o":["Perbuatan yang hanya menguntungkan diri sendiri","Perbuatan yang dilakukan untuk mendapatkan pujian","Perbuatan yang merusak lingkungan demi kemajuan","Perbuatan yang mendatangkan maslahat bagi diri sendiri dan orang lain serta tidak merusak","Perbuatan yang mengikuti hawa nafsu"],"a":4},{"q":"Asbabun nuzul Q.S. Al-Ma'idah/5: 48 mengingatkan umat Islam agar tidak bersikap seperti umat Nabi Musa A.S. yang...","o":["Tidak mengamalkan dan menegakkan apa yang terkandung dalam kitab yang diturunkan kepada mereka","Selalu berlomba-lomba dalam kebaikan","Menjaga keaslian kitab suci dengan sempurna","Selalu mengikuti syariat yang baru","Tidak pernah berselisih paham"],"a":0},{"q":"Dalam Q.S. Al-Ma'idah/5: 48, Allah Swt. menguji manusia terhadap karunia yang telah diberikan. Jawaban yang seharusnya diberikan manusia adalah...","o":["Bersikap sombong","Berlomba-lomba untuk berbuat kebajikan","Mengabaikan nikmat tersebut","Mengklaim nikmat itu hasil usaha sendiri semata","Menyalahkan orang lain atas kekurangan"],"a":1},{"q":"Manakah di bawah ini yang merupakan contoh perilaku \"peduli terhadap sekitar\" yang mencerminkan Q.S. Al-Ma'idah/5: 48?","o":["Membuang sampah sembarangan","Menjaga kebersihan lingkungan","Mengikuti pergaulan yang kurang baik","Meninggalkan salat tepat waktu","Bersikap acuh tak acuh terhadap tetangga"],"a":2},{"q":"Apa tujuan dari Allah Swt. menjadikan syariat yang berbeda-beda untuk tiap-tiap umat?","o":["Agar umat saling bermusuhan","Agar manusia bingung memilih agama","Agar kitab suci mudah diubah","Untuk menguji sejauh mana mereka dapat mengimplementasikan syariat-Nya yang tertuang dalam kitab samawi masing-masing","Agar syariat lama tetap dipertahankan selamanya"],"a":3},{"q":"Dalam hadis riwayat Muslim, fitnah diibaratkan seperti...","o":["Angin yang berhembus pelan","Air yang mengalir tenang","Cahaya matahari di siang hari","Hujan yang menyegarkan","Malam yang gelap gulita"],"a":4},{"q":"Salah satu syarat berkompetisi dalam kebaikan agar diterima oleh Allah Swt. adalah...","o":["Memiliki niat yang ikhlas karena Allah Swt.","Melakukan dengan cara-cara yang curang","Bertujuan untuk mengalahkan lawan secara fisik","Mencari keuntungan duniawi semata","Mengikuti hawa nafsu"],"a":0},{"q":"Apa yang akan diberitahukan Allah Swt. kepada hamba-Nya ketika mereka kembali kepada-Nya di akhirat kelak?","o":["Jumlah harta yang mereka kumpulkan","Apa saja yang dahulu pernah mereka perselisihkan saat menjalani kehidupan di dunia","Nama-nama pesaing mereka di dunia","Rahasia yang mereka simpan dari sesama manusia","Cara-cara untuk kembali ke dunia"],"a":1},{"q":"Dalam konteks Q.S. Al-Ma'idah/5: 48, apa fungsi Al-Qur'an terhadap kitab-kitab yang diturunkan sebelumnya?","o":["Menghapus dan memusnahkan fisiknya","Sebagai pembenar dan penjaga (acuan kebenaran) terhadapnya","Sebagai kitab yang isinya bertentangan total","Sebagai kitab yang hanya berlaku untuk bangsa Arab","Sebagai kitab yang sulit dipahami"],"a":2},{"q":"Jika seseorang beramal saleh dengan niat agar dipuji oleh orang lain, maka ia telah melanggar prinsip...","o":["Amar makruf nahi munkar","Istikamah dalam mengerjakan kebaikan dan niat karena Allah Swt.","Menggunakan akal sehat","Berlomba-lomba dalam kebaikan","Toleransi antarumat beragama"],"a":3},{"q":"Berdasarkan makna kosakata, mengapa seseorang yang bertahan pada syariat lama padahal keadaan sudah berubah akan tersesat?","o":["Karena syariat lama lebih unggul","Karena perubahan dilarang dalam agama","Karena semua syariat sama saja","Karena manusia tidak memerlukan tuntunan","Karena setiap terjadi perubahan kondisi, Allah Swt. akan mengubah syariat, dan yang tidak mengikuti minhaj akan tersesat"],"a":4},{"q":"Analisis kasus: Seorang siswa membantu teman yang kesulitan memahami pelajaran tanpa mengharapkan imbalan secara konsisten. Perilaku ini paling tepat mencerminkan poin...","o":["Berlomba-lomba dalam kebaikan merupakan bentuk ungkapan rasa syukur atas limpahan anugerah Allah Swt.","Perintah untuk mengubah syariat sesuai keinginan sendiri","Anjuran untuk berselisih paham demi kebenaran","Kewajiban untuk mengisolasi diri dari lingkungan","Larangan untuk menggunakan akal dalam belajar"],"a":0},{"q":"Dalam Tafsir Al-Azhar, Hamka menyimpulkan bahwa agama yang disampaikan oleh para nabi memiliki satu pokok dan satu tujuan. Apa tujuan tersebut?","o":["Kekuasaan politik","Tauhid","Kekayaan materi","Dominasi budaya","Persatuan suku"],"a":1},{"q":"Pernyataan yang sesuai dengan isi dan kandungan Q.S. Al-Ma'idah/5: 48 adalah: (1) Al-Qur'an membenarkan kitab sebelumnya, (2) Syariat setiap umat berbeda sesuai kondisi zamannya, (3) Manusia tidak perlu menggunakan akal, (4) Al-Qur'an tidak akan berubah meskipun satu huruf.","o":["(1), (2), dan (3)","(1), (3), dan (4)","(1), (2), dan (4)","(2), (3), dan (4)","(3) dan (4) saja"],"a":2},{"q":"Seorang dai menekankan bahwa dalam berdakwah harus melalui \"minhaj\" yang jelas sebelum mencapai \"syariat\". Berdasarkan makna kosakata, hal ini mengandung isyarat bahwa...","o":["Minhaj adalah tujuan akhir yang tidak bisa diubah","Syariat tidak memerlukan jalan untuk mencapainya","Minhaj hanya berlaku untuk umat terdahulu","Ada jalan menuju syariat, dan siapa yang mengikuti minhaj akan sampai kepada syariat","Syariat dan minhaj adalah dua konsep yang saling meniadakan"],"a":3},{"q":"Dalam hadis riwayat Muslim, seseorang bisa menjual agamanya dengan barang kenikmatan dunia. Sikap paling tepat untuk menghindari hal tersebut adalah...","o":["Menghindari semua bentuk harta benda","Menarik diri dari kehidupan bermasyarakat","Menunda amal saleh hingga usia senja","Mengikuti semua keinginan hawa nafsu","Selalu waspada terhadap fitnah dan memanfaatkan waktu untuk berzikir serta menjaga keimanan"],"a":4},{"q":"Mengapa Q.S. Al-Ma'idah/5: 48 menekankan untuk \"memutuskan perkara mereka menurut aturan yang diturunkan Allah\"?","o":["Karena aturan Allah adalah kebenaran mutlak yang mencegah penyimpangan dan pengubahan oleh orang yang mencari keuntungan diri","Karena manusia tidak memiliki kemampuan berpikir sama sekali","Karena aturan Allah selalu sama dengan aturan buatan manusia","Karena keputusan manusia selalu lebih adil daripada keputusan Allah","Karena aturan Allah hanya berlaku untuk urusan ibadah mahdah saja"],"a":0},{"q":"Analisis kasus: Dua kelompok berselisih mengenai detail ibadah sunah dan saling memaksakan kehendak dengan keras. Berdasarkan Q.S. Al-Ma'idah/5: 48, sikap yang seharusnya diambil adalah...","o":["Saling menjatuhkan untuk membuktikan kebenaran","Berlomba-lomba dalam berbuat kebaikan dan menyadari bahwa hanya Allah yang akan menjelaskan apa yang mereka perselisihkan di akhirat","Meninggalkan ibadah sama sekali agar tidak berselisih","Mengubah isi Al-Qur'an agar sesuai dengan kelompoknya","Mengikuti hawa nafsu kelompok masing-masing"],"a":1},{"q":"Dalam konteks \"fastabiqul khairat\", apa yang dimaksud dengan \"amal saleh\" yang tidak merusak?","o":["Amal yang hanya menguntungkan satu pihak","Amal yang dilakukan dengan terpaksa","Perbuatan yang mendatangkan maslahat bagi diri sendiri dan orang lain tanpa menimbulkan kerusakan","Perbuatan yang melanggar aturan negara","Perbuatan yang mengutamakan kepentingan golongan"],"a":2},{"q":"Perhatikan hukum tajwid berikut: \"Mad Tabi'i bertemu dengan huruf mati karena waqaf\". Hukum bacaan ini disebut...","o":["Mad Jaiz Munfasil","Mad Wajib Muttasil","Ikhfa' Syafawi","Mad 'Arid Lissukun","Izhar Qamariyyah"],"a":3},{"q":"Apa hubungan antara \"berlomba-lomba dalam kebaikan\" dengan \"rasa syukur\" menurut penjelasan tafsir dalam materi?","o":["Tidak ada hubungan sama sekali","Berlomba-lomba dalam kebaikan adalah bentuk kompetisi duniawi","Rasa syukur hanya diucapkan dengan lisan tanpa perbuatan","Berlomba-lomba dalam kebaikan adalah kewajiban yang memberatkan, bukan syukur","Berlomba-lomba berbuat kebajikan merupakan salah satu bentuk ungkapan rasa syukur kepada Allah Swt. atas semua rahmat yang telah dianugerahkan"],"a":4},{"q":"Jika seseorang berargumen bahwa syariat Islam sudah tidak relevan dengan zaman modern, maka berdasarkan materi, argumen tersebut keliru karena...","o":["Syariat bisa mengalami perubahan sesuai kondisi, tetapi dasar dan landasan agama (tauhid/keimanan) tidak berubah, dan Al-Qur'an sebagai penjaga kebenaran tetap berlaku","Syariat Islam tidak pernah mengalami perubahan sejak zaman Nabi Adam","Zaman modern tidak memerlukan aturan agama","Semua syariat umat terdahulu harus dihidupkan kembali","Akal manusia lebih tinggi daripada wahyu Allah"],"a":0},{"q":"Dalam hadis tentang fitnah, disebutkan \"Di pagi hari, seorang laki-laki dalam keadaan mukmin, lalu kafir di sore harinya.\" Ini mengindikasikan bahwa...","o":["Iman seseorang tidak mungkin berubah","Iman manusia bisa mengalami pasang-surut dan sangat rentan terhadap fitnah jika tidak segera beramal saleh","Waktu pagi adalah waktu yang paling buruk untuk beribadah","Sore hari adalah waktu di mana semua orang menjadi kafir","Laki-laki lebih mudah kafir daripada perempuan"],"a":1},{"q":"Manakah kombinasi perilaku yang paling tepat mencerminkan pemahaman Q.S. Al-Ma'idah/5: 48 dan hadis tentang kompetisi kebaikan secara simultan?","o":["Rajin salat tetapi suka bergosip tentang keburukan orang lain","Berlomba mengumpulkan harta untuk pamer, lalu bersedekah sedikit","Mengucapkan basmalah sebelum beraktivitas, istikamah dalam kebaikan, dan memanfaatkan waktu untuk amal saleh sebelum datang fitnah","Menunda amal baik sampai ada waktu luang yang panjang","Mengikuti hawa nafsu dengan alasan kebebasan berekspresi"],"a":2},{"q":"Mengapa Allah Swt. tidak menjadikan manusia sebagai satu umat saja, padahal Dia mampu melakukannya?","o":["Karena Allah Swt. tidak memiliki kemampuan tersebut","Karena manusia menolak untuk disatukan","Karena satu umat akan lebih mudah diatur oleh penguasa","Karena Allah Swt. hendak menguji manusia tentang karunia dan nikmat yang telah diberikan-Nya","Karena perbedaan adalah kesalahan yang harus dihilangkan"],"a":3},{"q":"Dalam konteks Q.S. Al-Ma'idah/5: 48, apa yang dimaksud dengan \"kebenaran yang telah datang kepadamu\"?","o":["Kebenaran yang dibuat oleh para filsuf","Kebenaran yang sesuai dengan keinginan mayoritas","Kebenaran yang bisa diubah sesuai kebutuhan","Kebenaran yang hanya bersifat relatif","Kebenaran yang dibawa oleh Al-Qur'an sebagai pembenar kitab-kitab sebelumnya"],"a":4},{"q":"Analisis kasus: Seorang pelajar menegur temannya yang menyontek dengan baik dan tetap membantu temannya belajar setelahnya. Tindakan ini mencerminkan...","o":["Peduli terhadap sekitar dan istikamah dalam kebaikan tanpa meninggalkan kebenaran","Ikut menyontek agar teman merasa senang","Melaporkan teman kepada pihak berwajib tanpa menegur terlebih dahulu","Membiarkan saja karena bukan urusannya","Bersaing untuk mendapatkan nilai tertinggi dengan cara curang"],"a":0},{"q":"Apa perbedaan utama antara kompetisi dalam kebaikan (fastabiqul khairat) dengan kompetisi duniawi yang tercela?","o":["Kompetisi kebaikan tidak memerlukan usaha keras","Kompetisi kebaikan dilakukan dengan niat ikhlas, cara yang benar, dan bertujuan mencari rida Allah, sedangkan kompetisi duniawi yang tercela sering kali mengikuti hawa nafsu dan menghalalkan segala cara","Kompetisi kebaikan hanya boleh dilakukan di masjid","Kompetisi duniawi selalu dilarang dalam semua kondisi","Tidak ada perbedaan, keduanya sama saja"],"a":1},{"q":"Berdasarkan penjelasan Dr. Abdullah bin Muhammad Alu Syaikh, \"fastabiqul khairat\" juga berarti mengikuti syariat yang Allah jadikan sebagai penasakh. Apa maksud 'penasakh' di sini?","o":["Syariat yang memperkuat syariat lama tanpa perubahan","Syariat yang menghapus atau menggantikan syariat-syariat sebelumnya","Syariat yang hanya berlaku untuk umat Yahudi dan Nasrani","Syariat yang tidak memiliki dasar hukum","Syariat yang bersifat sementara"],"a":2},{"q":"Dalam memahami dinamika syariat dan minhaj, pernyataan manakah yang paling tepat menggambarkan konsekuensi logis dari pemahaman tersebut?","o":["Minhaj tidak ada hubungannya dengan syariat","Syariat tidak pernah berubah dalam kondisi apa pun","Din (agama) bisa dibatalkan oleh syariat yang baru","Siapa yang mengikuti minhaj akan sampai kepada syariat, dan yang sampai kepada syariat berarti telah sampai kepada agama","Perubahan kondisi masyarakat tidak mempengaruhi penerapan syariat"],"a":3},{"q":"Kesimpulan akhir dari pembelajaran Q.S. Al-Ma'idah/5: 48 dan hadis tentang kompetisi dalam kebaikan adalah bahwa umat Islam harus...","o":["Mengisolasi diri dari umat lain","Mengubah isi Al-Qur'an agar sesuai dengan tantangan zaman","Mengikuti hawa nafsu dalam mengambil keputusan","Menunda amal saleh hingga usia tua","Senantiasa berlomba-lomba dalam kebaikan, memegang teguh Al-Qur'an sebagai acuan, dan menyadari bahwa semua akan kembali dan dipertanggungjawabkan di hadapan Allah Swt."],"a":4}];
 // __CONFIG_END__
 
 // __RUNTIME_CONFIG_START__
@@ -854,6 +905,12 @@ AppStorage.init();
 
 let dataSiswaDb = JSON.parse(localStorage.getItem('dataSiswaDb') || 'null') || (typeof DATA_SISWA_DEFAULT !== 'undefined' ? DATA_SISWA_DEFAULT : []);
 let spreadsheetMapDb = JSON.parse(localStorage.getItem('spreadsheetMapDb') || 'null') || (typeof SPREADSHEET_MAP_DEFAULT !== 'undefined' ? SPREADSHEET_MAP_DEFAULT : []);
+let mapelDb = JSON.parse(localStorage.getItem('mapelDb') || 'null') || (typeof MAPEL_DEFAULT !== 'undefined' ? MAPEL_DEFAULT : ["PAI", "Informatika", "Matematika"]);
+let soalMapelDb = JSON.parse(localStorage.getItem('soalMapelDb') || 'null') || (typeof SOAL_MAPEL_DEFAULT !== 'undefined' ? SOAL_MAPEL_DEFAULT : { "PAI": SOAL_DEFAULT });
+
+mapelDb.forEach(m => {
+  if (!soalMapelDb[m]) soalMapelDb[m] = [...SOAL_DEFAULT];
+});
 
 function simpanSiswaDb() {
   AppStorage.setItem('dataSiswaDb', JSON.stringify(dataSiswaDb));
@@ -864,6 +921,135 @@ function simpanSiswaDb() {
 function simpanSpreadsheetMapDb() {
   AppStorage.setItem('spreadsheetMapDb', JSON.stringify(spreadsheetMapDb));
   renderTabelSpreadsheet();
+}
+
+function simpanMapelDb() {
+  AppStorage.setItem('mapelDb', JSON.stringify(mapelDb));
+  AppStorage.setItem('soalMapelDb', JSON.stringify(soalMapelDb));
+  renderTabelMapel();
+  updateSelectMapelSiswa();
+  updateSelectMapelImport();
+}
+
+function updateSelectMapelSiswa() {
+  const select = document.getElementById('selectMapelSiswa');
+  if (!select) return;
+  const currentVal = select.value;
+  let html = '';
+  mapelDb.forEach(m => {
+    html += '<option value="' + m + '">' + m + '</option>';
+  });
+  select.innerHTML = html;
+  if (mapelDb.includes(currentVal)) {
+    select.value = currentVal;
+  }
+}
+
+function updateSelectMapelImport() {
+  const select = document.getElementById('selectMapelImport');
+  if (!select) return;
+  const currentVal = select.value;
+  let html = '';
+  mapelDb.forEach(m => {
+    html += '<option value="' + m + '">' + m + '</option>';
+  });
+  select.innerHTML = html;
+  if (mapelDb.includes(currentVal)) {
+    select.value = currentVal;
+  } else if (mapelDb.length > 0) {
+    select.value = mapelDb[0];
+  }
+  onMapelImportChange();
+}
+
+function onMapelImportChange() {
+  const select = document.getElementById('selectMapelImport');
+  if (!select) return;
+  const mapel = select.value;
+  soalAktif = (soalMapelDb && soalMapelDb[mapel]) ? soalMapelDb[mapel] : [];
+  document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length;
+  tampilkanPreview(soalAktif);
+}
+
+function renderTabelMapel() {
+  const tbody = document.getElementById('bodyTabelMapel');
+  if (!tbody) return;
+
+  if (mapelDb.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-secondary);">Belum ada mata pelajaran terdaftar.</td></tr>';
+    return;
+  }
+
+  let html = '';
+  mapelDb.forEach((m, index) => {
+    const totalSoalMapel = (soalMapelDb && soalMapelDb[m]) ? soalMapelDb[m].length : 0;
+    html += '<tr>';
+    html += '<td>' + (index + 1) + '</td>';
+    html += '<td><strong>' + m + '</strong></td>';
+    html += '<td><span class="status-badge status-on">' + totalSoalMapel + ' Soal</span></td>';
+    html += '<td>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="editMapel(' + index + ')">✏️ Edit</button> ';
+    html += '<button class="btn btn-danger btn-sm" onclick="hapusMapel(' + index + ')">🗑️ Hapus</button>';
+    html += '</td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function bukaModalTambahMapel() {
+  document.getElementById('mapelModalTitle').innerText = '📚 Tambah Mata Pelajaran';
+  document.getElementById('editMapelIndex').value = '-1';
+  document.getElementById('modalNamaMapel').value = '';
+  document.getElementById('mapelModal').style.display = 'flex';
+}
+
+function editMapel(index) {
+  const m = mapelDb[index];
+  if (!m) return;
+  document.getElementById('mapelModalTitle').innerText = '✏️ Edit Mata Pelajaran';
+  document.getElementById('editMapelIndex').value = index;
+  document.getElementById('modalNamaMapel').value = m;
+  document.getElementById('mapelModal').style.display = 'flex';
+}
+
+function simpanMapelModal() {
+  const index = parseInt(document.getElementById('editMapelIndex').value);
+  const namaMapel = document.getElementById('modalNamaMapel').value.trim();
+
+  if (!namaMapel) {
+    alert('❌ Nama mata pelajaran harus diisi!');
+    return;
+  }
+
+  if (index >= 0) {
+    const oldName = mapelDb[index];
+    if (oldName !== namaMapel) {
+      soalMapelDb[namaMapel] = soalMapelDb[oldName] || [];
+      delete soalMapelDb[oldName];
+      mapelDb[index] = namaMapel;
+    }
+  } else {
+    if (mapelDb.includes(namaMapel)) {
+      alert('❌ Mata pelajaran dengan nama tersebut sudah ada!');
+      return;
+    }
+    mapelDb.push(namaMapel);
+    if (!soalMapelDb[namaMapel]) {
+      soalMapelDb[namaMapel] = [];
+    }
+  }
+
+  simpanMapelDb();
+  tutupModal('mapelModal');
+}
+
+function hapusMapel(index) {
+  const m = mapelDb[index];
+  if (!m) return;
+  if (!confirm('Yakin ingin menghapus mata pelajaran ' + m + '? Semua soal untuk mata pelajaran ini juga akan terhapus.')) return;
+  mapelDb.splice(index, 1);
+  delete soalMapelDb[m];
+  simpanMapelDb();
 }
 
 function updateSelectKelasFilter() {
@@ -1092,6 +1278,7 @@ function tesKirimKelas(index) {
     nama: "Tes Kirim Kelas (" + item.kelas + ")",
     nomor: "00",
     kelas: item.kelas,
+    mataPelajaran: (mapelDb && mapelDb[0]) ? mapelDb[0] : "PAI",
     nilai: 100,
     nilaiMaksimal: configNilaiMaksimal,
     kkm: configNilaiKKM,
@@ -1205,7 +1392,7 @@ function updateJudulDiSemuaTempat() {
   if (pj) pj.innerText = configJudul; if (ps) ps.innerText = configSubJudul; if (pt) pt.innerText = configToken;
 }
 
-function bukaFormSiswa() { document.getElementById('menuAwal').style.display = 'none'; document.getElementById('identityForm').style.display = 'block'; updateInfoWaktu(); }
+function bukaFormSiswa() { document.getElementById('menuAwal').style.display = 'none'; document.getElementById('identityForm').style.display = 'block'; updateSelectMapelSiswa(); updateInfoWaktu(); }
 function kembaliKeMenu() { document.getElementById('menuAwal').style.display = 'block'; document.getElementById('identityForm').style.display = 'none'; }
 function bukaLoginGuru() { document.getElementById('loginModal').style.display = 'flex'; document.getElementById('passwordLogin').value = ''; setTimeout(() => document.getElementById('passwordLogin').focus(), 100); }
 function prosesLogin() { const pwd = document.getElementById('passwordLogin').value; if (pwd === PASSWORD_GURU) { tutupModal('loginModal'); bukaDashboard(); } else { alert('❌ Password salah!'); } }
@@ -1237,6 +1424,8 @@ function loadDashboardData() {
   updateSelectKelasFilter();
   renderTabelSiswa();
   renderTabelSpreadsheet();
+  renderTabelMapel();
+  updateSelectMapelImport();
 }
 
 function simpanPengaturanNilai() {
@@ -1361,6 +1550,7 @@ function tesKirimGoogleSheet() {
     nama: "Uji Coba Sistem",
     nomor: "00",
     kelas: "GURU-TEST",
+    mataPelajaran: (mapelDb && mapelDb[0]) ? mapelDb[0] : "PAI",
     nilai: 100,
     benar: 10,
     totalSoal: 10,
@@ -1471,8 +1661,11 @@ function importExcel(event) {
         soalBaru.push({q: pertanyaan, o: [opsiA, opsiB, opsiC, opsiD, opsiE], a: idxJawaban});
       }
       if (soalBaru.length === 0) { document.getElementById('statusImport').innerHTML = '<div class="alert-error">❌ Tidak ada soal valid.</div>'; return; }
-      soalAktif = soalBaru; localStorage.setItem('soalAktif', JSON.stringify(soalBaru));
-      document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Berhasil import <strong>' + soalBaru.length + ' soal</strong>.</div>';
+      const mapelImport = document.getElementById('selectMapelImport') ? document.getElementById('selectMapelImport').value : 'PAI';
+      soalMapelDb[mapelImport] = soalBaru;
+      soalAktif = soalBaru;
+      simpanMapelDb();
+      document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Berhasil import <strong>' + soalBaru.length + ' soal</strong> untuk mata pelajaran <strong>' + mapelImport + '</strong>.</div>';
       document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length; tampilkanPreview(soalBaru);
     } catch (err) { document.getElementById('statusImport').innerHTML = '<div class="alert-error">❌ Error: ' + err.message + '</div>'; }
     finally { if (inputElement) inputElement.value = ''; }
@@ -1495,11 +1688,15 @@ function downloadTemplate() {
 }
 
 function resetSoalDefault() {
-  if (!confirm('Yakin ingin mengembalikan soal ke default?')) return;
-  soalAktif = SOAL_DEFAULT; localStorage.setItem('soalAktif', JSON.stringify(soalAktif));
+  const mapelImport = document.getElementById('selectMapelImport') ? document.getElementById('selectMapelImport').value : 'PAI';
+  if (!confirm('Yakin ingin mengembalikan soal mata pelajaran ' + mapelImport + ' ke default?')) return;
+  const defaultQuestions = (typeof SOAL_MAPEL_DEFAULT !== 'undefined' && SOAL_MAPEL_DEFAULT[mapelImport]) ? [...SOAL_MAPEL_DEFAULT[mapelImport]] : [...SOAL_DEFAULT];
+  soalMapelDb[mapelImport] = defaultQuestions;
+  soalAktif = defaultQuestions;
+  simpanMapelDb();
   document.getElementById('jumlahSoalSaatIni').innerText = soalAktif.length;
-  document.getElementById('previewSoal').innerHTML = '';
-  document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Soal direset ke default</div>';
+  tampilkanPreview(soalAktif);
+  document.getElementById('statusImport').innerHTML = '<div class="alert-success">✅ Soal ' + mapelImport + ' direset ke default</div>';
 }
 
 function simpanAcak() { configAcak = document.getElementById('toggleAcak').checked; localStorage.setItem('configAcak', configAcak); updateStatusAcak(); }
@@ -1723,7 +1920,7 @@ function simpanPermanenKeHTML() {
     const newVersion = incrementVersion(HTML_VERSION);
     localStorage.setItem('htmlVersion', newVersion);
     ['statusJudul','statusPassword','statusWaktu','statusImport','statusPengaturanNilai','statusMaxPelanggaran','statusGoogleSheet','statusResetSiswa','statusSimpanPermanen'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-    const newConfigBlock = '// __CONFIG_START__\nconst JUDUL_DEFAULT = ' + JSON.stringify(configJudul) + ';\nconst SUBJUDUL_DEFAULT = ' + JSON.stringify(configSubJudul) + ';\nconst PASSWORD_DEFAULT = ' + JSON.stringify(PASSWORD_GURU) + ';\nconst TOKEN_DEFAULT = ' + JSON.stringify(configToken) + ';\nconst GOOGLE_SHEET_URL_DEFAULT = ' + JSON.stringify(configGoogleSheetUrl) + ';\nconst DURASI_DEFAULT = ' + JSON.stringify(configDurasi) + ';\nconst JUMLAH_SOAL_DEFAULT = ' + JSON.stringify(configJumlahSoal) + ';\nconst ACAK_DEFAULT = ' + JSON.stringify(configAcak) + ';\nconst ACAK_OPSI_DEFAULT = ' + JSON.stringify(configAcakOpsi) + ';\nconst MAX_PELANGGARAN_DEFAULT = ' + JSON.stringify(configMaxPelanggaran) + ';\nconst NILAI_MAKSIMAL_DEFAULT = ' + JSON.stringify(configNilaiMaksimal) + ';\nconst NILAI_KKM_DEFAULT = ' + JSON.stringify(configNilaiKKM) + ';\nconst TAMPIL_NILAI_DEFAULT = ' + JSON.stringify(configTampilNilai) + ';\nconst DATA_SISWA_DEFAULT = ' + JSON.stringify(dataSiswaDb) + ';\nconst SPREADSHEET_MAP_DEFAULT = ' + JSON.stringify(spreadsheetMapDb) + ';\nconst SOAL_DEFAULT = ' + JSON.stringify(soalAktif) + ';\n// __CONFIG_END__';
+    const newConfigBlock = '// __CONFIG_START__\nconst JUDUL_DEFAULT = ' + JSON.stringify(configJudul) + ';\nconst SUBJUDUL_DEFAULT = ' + JSON.stringify(configSubJudul) + ';\nconst PASSWORD_DEFAULT = ' + JSON.stringify(PASSWORD_GURU) + ';\nconst TOKEN_DEFAULT = ' + JSON.stringify(configToken) + ';\nconst GOOGLE_SHEET_URL_DEFAULT = ' + JSON.stringify(configGoogleSheetUrl) + ';\nconst DURASI_DEFAULT = ' + JSON.stringify(configDurasi) + ';\nconst JUMLAH_SOAL_DEFAULT = ' + JSON.stringify(configJumlahSoal) + ';\nconst ACAK_DEFAULT = ' + JSON.stringify(configAcak) + ';\nconst ACAK_OPSI_DEFAULT = ' + JSON.stringify(configAcakOpsi) + ';\nconst MAX_PELANGGARAN_DEFAULT = ' + JSON.stringify(configMaxPelanggaran) + ';\nconst NILAI_MAKSIMAL_DEFAULT = ' + JSON.stringify(configNilaiMaksimal) + ';\nconst NILAI_KKM_DEFAULT = ' + JSON.stringify(configNilaiKKM) + ';\nconst TAMPIL_NILAI_DEFAULT = ' + JSON.stringify(configTampilNilai) + ';\nconst DATA_SISWA_DEFAULT = ' + JSON.stringify(dataSiswaDb) + ';\nconst SPREADSHEET_MAP_DEFAULT = ' + JSON.stringify(spreadsheetMapDb) + ';\nconst MAPEL_DEFAULT = ' + JSON.stringify(mapelDb) + ';\nconst SOAL_MAPEL_DEFAULT = ' + JSON.stringify(soalMapelDb) + ';\nconst SOAL_DEFAULT = ' + JSON.stringify(soalAktif) + ';\n// __CONFIG_END__';
     const newRuntimeConfigBlock = '// __RUNTIME_CONFIG_START__\nlet configDurasi = parseInt(localStorage.getItem(\'configDurasi\') || (typeof DURASI_DEFAULT !== \'undefined\' ? DURASI_DEFAULT : ' + configDurasi + '));\nlet configJumlahSoal = parseInt(localStorage.getItem(\'configJumlahSoal\') || (typeof JUMLAH_SOAL_DEFAULT !== \'undefined\' ? JUMLAH_SOAL_DEFAULT : ' + configJumlahSoal + '));\nlet configAcak = localStorage.getItem(\'configAcak\') !== null ? localStorage.getItem(\'configAcak\') === \'true\' : (typeof ACAK_DEFAULT !== \'undefined\' ? ACAK_DEFAULT : ' + configAcak + ');\nlet configAcakOpsi = localStorage.getItem(\'configAcakOpsi\') !== null ? localStorage.getItem(\'configAcakOpsi\') === \'true\' : (typeof ACAK_OPSI_DEFAULT !== \'undefined\' ? ACAK_OPSI_DEFAULT : ' + configAcakOpsi + ');\nlet configMaxPelanggaran = parseInt(localStorage.getItem(\'configMaxPelanggaran\') || (typeof MAX_PELANGGARAN_DEFAULT !== \'undefined\' ? MAX_PELANGGARAN_DEFAULT : ' + configMaxPelanggaran + '));\nlet configNilaiMaksimal = parseInt(localStorage.getItem(\'configNilaiMaksimal\') || (typeof NILAI_MAKSIMAL_DEFAULT !== \'undefined\' ? NILAI_MAKSIMAL_DEFAULT : ' + configNilaiMaksimal + '));\nlet configNilaiKKM = parseInt(localStorage.getItem(\'configNilaiKKM\') || (typeof NILAI_KKM_DEFAULT !== \'undefined\' ? NILAI_KKM_DEFAULT : ' + configNilaiKKM + '));\nlet configTampilNilai = localStorage.getItem(\'configTampilNilai\') !== null ? localStorage.getItem(\'configTampilNilai\') !== \'false\' : (typeof TAMPIL_NILAI_DEFAULT !== \'undefined\' ? TAMPIL_NILAI_DEFAULT : ' + configTampilNilai + ');\n// __RUNTIME_CONFIG_END__';
     html = html.replace(/\/\/ __CONFIG_START__[\s\S]*?\/\/ __CONFIG_END__/, () => newConfigBlock);
     html = html.replace(/\/\/ __RUNTIME_CONFIG_START__[\s\S]*?\/\/ __RUNTIME_CONFIG_END__/, () => newRuntimeConfigBlock);
@@ -1834,7 +2031,14 @@ function mulaiUjian() {
       return;
     }
   }
-  dataSiswa = {nama: nama, nomor: nomor, kelas: kelas};
+  const mapelSiswa = document.getElementById('selectMapelSiswa') ? document.getElementById('selectMapelSiswa').value : (mapelDb[0] || 'PAI');
+  dataSiswa = {nama: nama, nomor: nomor, kelas: kelas, mataPelajaran: mapelSiswa};
+  if (soalMapelDb && soalMapelDb[mapelSiswa] && soalMapelDb[mapelSiswa].length > 0) {
+    soalAktif = soalMapelDb[mapelSiswa];
+  } else {
+    soalAktif = SOAL_DEFAULT;
+  }
+  localStorage.setItem('soalAktif', JSON.stringify(soalAktif));
   localStorage.setItem('dataSiswa', JSON.stringify(dataSiswa)); waktuMulai = Date.now(); localStorage.setItem('waktuMulai', waktuMulai);
   statusUjian = 'berlangsung'; localStorage.setItem('statusUjian', statusUjian);
   jumlahPelanggaran = 0; pelanggaran = []; jawaban = {}; waktuJawaban = {}; urutanOpsiPerSoal = {};
@@ -2034,6 +2238,7 @@ function submitUjian(isAutoSubmit) {
         nama: dataSiswa.nama,
         nomor: dataSiswa.nomor,
         kelas: dataSiswa.kelas,
+        mataPelajaran: dataSiswa.mataPelajaran || ((mapelDb && mapelDb[0]) ? mapelDb[0] : "PAI"),
         nilai: nilai,
         nilaiMaksimal: configNilaiMaksimal,
         kkm: configNilaiKKM,
@@ -2078,7 +2283,7 @@ function tampilkanHasil(nilai, benar, isAutoSubmit) {
     scoreDisplayHtml = '<div class="alert-info" style="margin:20px 0; font-size:15px; font-weight:bold;">🔒 Nilai disembunyikan oleh Guru. Hasil ujian Anda telah tersimpan.<br><span class="status-badge ' + syncBadgeClass + '" style="font-size:12px; padding:4px 10px; margin-top:6px; display:inline-block;">Spreadsheet: ' + syncBadgeText + '</span></div>';
   }
 
-  document.getElementById('resultArea').innerHTML = '<div class="' + resultClass + '"><h2>' + titleText + '</h2><p><strong>Nama:</strong> ' + dataSiswa.nama + '</p><p><strong>Nomor:</strong> ' + dataSiswa.nomor + '</p><p><strong>Kelas:</strong> ' + dataSiswa.kelas + '</p><p style="font-size:12px; color:var(--text-secondary);">Selesai: ' + waktuSelesai + '</p>' + scoreDisplayHtml + '<p>Benar: <strong>' + benar + '</strong> / ' + soalUrutan.length + '</p><p style="margin-top:12px; font-size:16px;"><strong>⚠️ Pelanggaran: <span style="color:#dc2626; font-size:20px;">' + jumlahPelanggaran + '</span> / ' + maxPelanggaranUjian + '</strong></p>' + (isAutoSubmit ? '<p style="color:#991b1b; font-weight:bold; margin-top:8px;">Dikumpulkan otomatis (' + maxPelanggaranUjian + ' pelanggaran)</p>' : '') + '<div id="sheetSendingStatus"></div>' + violationListHtml + forensikHtml + '<div class="locked-box"> <strong>Ujian dikunci.</strong> Hubungi guru untuk reset.</div><button class="btn-reset" style="float:none; margin-top:15px; padding:10px 20px; font-size:14px;" onclick="bukaModalReset()">🔐 Reset (Guru)</button></div>';
+  document.getElementById('resultArea').innerHTML = '<div class="' + resultClass + '"><h2>' + titleText + '</h2><p><strong>Nama:</strong> ' + dataSiswa.nama + '</p><p><strong>Nomor:</strong> ' + dataSiswa.nomor + '</p><p><strong>Kelas:</strong> ' + dataSiswa.kelas + '</p><p><strong>Mata Pelajaran:</strong> ' + (dataSiswa.mataPelajaran || '-') + '</p><p style="font-size:12px; color:var(--text-secondary);">Selesai: ' + waktuSelesai + '</p>' + scoreDisplayHtml + '<p>Benar: <strong>' + benar + '</strong> / ' + soalUrutan.length + '</p><p style="margin-top:12px; font-size:16px;"><strong>⚠️ Pelanggaran: <span style="color:#dc2626; font-size:20px;">' + jumlahPelanggaran + '</span> / ' + maxPelanggaranUjian + '</strong></p>' + (isAutoSubmit ? '<p style="color:#991b1b; font-weight:bold; margin-top:8px;">Dikumpulkan otomatis (' + maxPelanggaranUjian + ' pelanggaran)</p>' : '') + '<div id="sheetSendingStatus"></div>' + violationListHtml + forensikHtml + '<div class="locked-box"> <strong>Ujian dikunci.</strong> Hubungi guru untuk reset.</div><button class="btn-reset" style="float:none; margin-top:15px; padding:10px 20px; font-size:14px;" onclick="bukaModalReset()">🔐 Reset (Guru)</button></div>';
 }
 
 function tutupModal(id) { document.getElementById(id).style.display = 'none'; }
@@ -2102,6 +2307,7 @@ setInterval(() => {
 window.onload = function() {
   if (localStorage.getItem('darkMode') === 'true') { document.body.classList.add('dark-mode'); document.querySelector('.dark-mode-toggle').innerText = '☀️'; }
   updateJudulDiSemuaTempat();
+  updateSelectMapelSiswa();
   if (statusUjian === 'berlangsung') {
     waktuMulai = parseInt(localStorage.getItem('waktuMulai')); jumlahPelanggaran = parseInt(localStorage.getItem('jumlahPelanggaran') || '0');
     pelanggaran = JSON.parse(localStorage.getItem('pelanggaran') || '[]'); jawaban = JSON.parse(localStorage.getItem('jawaban') || '{}');
