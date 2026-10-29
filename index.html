@@ -299,6 +299,30 @@
     </div>
 
     <div class="panel">
+      <h3>📅 Database Jadwal Ujian (CRUD)</h3>
+      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-secondary);">Atur jadwal ujian berdasarkan Hari, Tanggal, Mata Pelajaran, Kelas, serta batas waktu pengerjaan (Jam Mulai s/d Jam Selesai). Jika siswa masuk di luar jadwal, soal tidak akan keluar.</p>
+      <div class="panel-row" style="margin-bottom:12px;">
+        <button class="btn btn-success btn-sm" onclick="bukaModalTambahJadwal()">+ Tambah Jadwal Ujian</button>
+      </div>
+      <div id="statusJadwalDb"></div>
+      <div style="overflow-x:auto;">
+        <table class="crud-table" id="tabelJadwal">
+          <thead>
+            <tr>
+              <th style="width:40px;">No</th>
+              <th>Mata Pelajaran</th>
+              <th style="width:120px;">Kelas</th>
+              <th style="width:130px;">Tanggal</th>
+              <th style="width:140px;">Waktu Ujian</th>
+              <th style="width:130px;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="bodyTabelJadwal"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
       <h3>👥 Database Siswa (CRUD, Sync Kelas &amp; Batch Data)</h3>
       <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-secondary);">Kelola data siswa, filter sesuai kelas, import/export data, dan download template.</p>
       <div class="panel-row" style="margin-bottom:12px;">
@@ -696,6 +720,15 @@
       </div>
       <div id="statusSimpanPermanen"><div class="alert-success">✅ <strong>File HTML berhasil didownload!</strong><br> Versi baru: <strong>v5.13</strong><br>📌 Ganti file lama di hosting dengan file ini.</div></div>
     </div>
+
+    <div class="panel panel-highlight" style="border-left: 4px solid var(--accent-blue);">
+      <h3>💾 12. Simpan Pengaturan</h3>
+      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-primary);">Simpan semua perubahan pengaturan yang telah Anda lakukan pada Dashboard Guru (Judul, Token, Password, Durasi, Nilai/KKM, Batas Pelanggaran, Spreadsheet, Database Siswa, Jadwal Ujian, Mata Pelajaran &amp; Soal) ke penyimpanan sistem.</p>
+      <div class="panel-row" style="margin-top:15px;">
+        <button class="btn btn-success" onclick="simpanSemuaPengaturan()" style="padding:12px 25px; font-size:15px;">💾 Simpan Pengaturan</button>
+      </div>
+      <div id="statusSimpanPengaturan" style="margin-top:10px;"></div>
+    </div>
   </div>
 
   <div id="quizArea" style="display:none;" class="fade-in">
@@ -719,6 +752,22 @@
     <div style="margin-top:15px;">
       <button class="btn" onclick="prosesLogin()">Login</button>
       <button class="btn-cancel" onclick="tutupModal('loginModal')">Batal</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="jadwalModal" style="display: none;">
+  <div class="modal-content">
+    <h3 id="jadwalModalTitle">📅 Tambah Jadwal Ujian</h3>
+    <input type="hidden" id="editJadwalIndex" value="-1">
+    <div class="form-group"><label>Mata Pelajaran:</label><select id="modalMapelJadwal"></select></div>
+    <div class="form-group"><label>Kelas:</label><input type="text" id="modalKelasJadwal" placeholder="Contoh: X DKV 1 atau SEMUA"></div>
+    <div class="form-group"><label>Tanggal Ujian:</label><input type="date" id="modalTanggalJadwal"></div>
+    <div class="form-group"><label>Jam Mulai:</label><input type="time" id="modalJamMulaiJadwal"></div>
+    <div class="form-group"><label>Jam Selesai:</label><input type="time" id="modalJamSelesaiJadwal"></div>
+    <div style="margin-top:15px;">
+      <button class="btn btn-success" onclick="simpanJadwalModal()">💾 Simpan Jadwal</button>
+      <button class="btn-cancel" onclick="tutupModal('jadwalModal')">Batal</button>
     </div>
   </div>
 </div>
@@ -805,6 +854,7 @@ const NILAI_KKM_DEFAULT = 75;
 const TAMPIL_NILAI_DEFAULT = true;
 const DATA_SISWA_DEFAULT = [{"nama":"Ahmad Rizky","nomor":"01","kelas":"X DKV 1"},{"nama":"Budi Santoso","nomor":"02","kelas":"X DKV 1"},{"nama":"Citra Dewi","nomor":"01","kelas":"X DKV 2"},{"nama":"Dian Pratama","nomor":"02","kelas":"X DKV 2"}];
 const SPREADSHEET_MAP_DEFAULT = [{"kelas":"X DKV 1","url":"https://script.google.com/macros/s/AKfycbyRIK7uFyFh56bed-Fwlr1yVdAz-2vqDwpEAe7jdFQuqeO5lmo2L53w8rJ_IFmpuAsesQ/exec"},{"kelas":"X DKV 2","url":"https://script.google.com/macros/s/AKfycbwEE3VHCyu0zgOYe7gch7ltmj78FVMWLSaKN1ueKv09_GR3FTceplf987eKjWpVVyUJ/exec"}];
+const JADWAL_UJIAN_DEFAULT = [];
 // __CONFIG_END__
 
 // __RUNTIME_CONFIG_START__
@@ -907,6 +957,7 @@ let dataSiswaDb = JSON.parse(localStorage.getItem('dataSiswaDb') || 'null') || (
 let spreadsheetMapDb = JSON.parse(localStorage.getItem('spreadsheetMapDb') || 'null') || (typeof SPREADSHEET_MAP_DEFAULT !== 'undefined' ? SPREADSHEET_MAP_DEFAULT : []);
 let mapelDb = JSON.parse(localStorage.getItem('mapelDb') || 'null') || (typeof MAPEL_DEFAULT !== 'undefined' ? MAPEL_DEFAULT : ["PAI", "Informatika", "Matematika"]);
 let soalMapelDb = JSON.parse(localStorage.getItem('soalMapelDb') || 'null') || (typeof SOAL_MAPEL_DEFAULT !== 'undefined' ? SOAL_MAPEL_DEFAULT : { "PAI": SOAL_DEFAULT });
+let jadwalUjianDb = JSON.parse(localStorage.getItem('jadwalUjianDb') || 'null') || (typeof JADWAL_UJIAN_DEFAULT !== 'undefined' ? JADWAL_UJIAN_DEFAULT : []);
 
 mapelDb.forEach(m => {
   if (!soalMapelDb[m]) soalMapelDb[m] = [...SOAL_DEFAULT];
@@ -929,6 +980,144 @@ function simpanMapelDb() {
   renderTabelMapel();
   updateSelectMapelSiswa();
   updateSelectMapelImport();
+}
+
+function simpanJadwalUjianDb() {
+  AppStorage.setItem('jadwalUjianDb', JSON.stringify(jadwalUjianDb));
+  renderTabelJadwal();
+}
+
+function bukaModalTambahJadwal() {
+  document.getElementById('jadwalModalTitle').innerText = '📅 Tambah Jadwal Ujian';
+  document.getElementById('editJadwalIndex').value = '-1';
+  updateSelectMapelJadwal();
+  document.getElementById('modalKelasJadwal').value = '';
+  document.getElementById('modalTanggalJadwal').value = '';
+  document.getElementById('modalJamMulaiJadwal').value = '07:00';
+  document.getElementById('modalJamSelesaiJadwal').value = '16:00';
+  document.getElementById('jadwalModal').style.display = 'flex';
+}
+
+function updateSelectMapelJadwal() {
+  const select = document.getElementById('modalMapelJadwal');
+  if (!select) return;
+  let html = '';
+  mapelDb.forEach(m => {
+    html += '<option value="' + m + '">' + m + '</option>';
+  });
+  select.innerHTML = html;
+}
+
+function editJadwal(index) {
+  const item = jadwalUjianDb[index];
+  if (!item) return;
+  document.getElementById('jadwalModalTitle').innerText = '✏️ Edit Jadwal Ujian';
+  document.getElementById('editJadwalIndex').value = index;
+  updateSelectMapelJadwal();
+  document.getElementById('modalMapelJadwal').value = item.mataPelajaran || mapelDb[0] || '';
+  document.getElementById('modalKelasJadwal').value = item.kelas || '';
+  document.getElementById('modalTanggalJadwal').value = item.tanggal || '';
+  document.getElementById('modalJamMulaiJadwal').value = item.jamMulai || '';
+  document.getElementById('modalJamSelesaiJadwal').value = item.jamSelesai || '';
+  document.getElementById('jadwalModal').style.display = 'flex';
+}
+
+function simpanJadwalModal() {
+  const index = parseInt(document.getElementById('editJadwalIndex').value);
+  const mataPelajaran = document.getElementById('modalMapelJadwal').value.trim();
+  const kelas = document.getElementById('modalKelasJadwal').value.trim();
+  const tanggal = document.getElementById('modalTanggalJadwal').value.trim();
+  const jamMulai = document.getElementById('modalJamMulaiJadwal').value.trim();
+  const jamSelesai = document.getElementById('modalJamSelesaiJadwal').value.trim();
+
+  if (!mataPelajaran || !kelas || !tanggal || !jamMulai || !jamSelesai) {
+    alert('❌ Semua bidang jadwal harus diisi!');
+    return;
+  }
+
+  const data = { mataPelajaran, kelas, tanggal, jamMulai, jamSelesai };
+
+  if (index >= 0) {
+    jadwalUjianDb[index] = data;
+  } else {
+    jadwalUjianDb.push(data);
+  }
+
+  simpanJadwalUjianDb();
+  tutupModal('jadwalModal');
+}
+
+function hapusJadwal(index) {
+  if (!confirm('Yakin ingin menghapus jadwal ujian ini?')) return;
+  jadwalUjianDb.splice(index, 1);
+  simpanJadwalUjianDb();
+}
+
+function simpanSemuaPengaturan() {
+  simpanJudul();
+  simpanWaktu();
+  simpanJumlahSoal();
+  simpanPengaturanNilai();
+  simpanMaxPelanggaran();
+  simpanGoogleSheet();
+  simpanJadwalUjianDb();
+  simpanSiswaDb();
+  simpanSpreadsheetMapDb();
+  simpanMapelDb();
+
+  const statusElem = document.getElementById('statusSimpanPengaturan');
+  if (statusElem) {
+    statusElem.innerHTML = '<div class="alert-success">✅ <strong>Semua Pengaturan Berhasil Disimpan!</strong><br>Seluruh konfigurasi (Judul, Waktu, Nilai, Max Pelanggaran, Spreadsheet, Jadwal Ujian, Siswa, Mapel) telah tersimpan ke sistem.</div>';
+    setTimeout(() => { statusElem.innerHTML = ''; }, 5000);
+  }
+}
+
+function isJadwalSesuai(kelas, mapelSiswa) {
+  if (!jadwalUjianDb || jadwalUjianDb.length === 0) return true;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const tglStr = year + '-' + month + '-' + day;
+  const jam = String(now.getHours()).padStart(2, '0');
+  const mnt = String(now.getMinutes()).padStart(2, '0');
+  const jamStr = jam + ':' + mnt;
+
+  const normalize = str => String(str || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  return jadwalUjianDb.some(j => {
+    const kMatch = j.kelas.trim().toLowerCase() === 'semua' || normalize(j.kelas) === normalize(kelas);
+    const mMatch = j.mataPelajaran.trim().toLowerCase() === 'semua' || normalize(j.mataPelajaran) === normalize(mapelSiswa);
+    const tglMatch = !j.tanggal || j.tanggal === tglStr;
+    const timeMatch = (!j.jamMulai || jamStr >= j.jamMulai) && (!j.jamSelesai || jamStr <= j.jamSelesai);
+    return kMatch && mMatch && tglMatch && timeMatch;
+  });
+}
+
+function renderTabelJadwal() {
+  const tbody = document.getElementById('bodyTabelJadwal');
+  if (!tbody) return;
+
+  if (jadwalUjianDb.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-secondary);">Belum ada jadwal ujian yang diatur.</td></tr>';
+    return;
+  }
+
+  let html = '';
+  jadwalUjianDb.forEach((item, index) => {
+    html += '<tr>';
+    html += '<td>' + (index + 1) + '</td>';
+    html += '<td><strong>' + item.mataPelajaran + '</strong></td>';
+    html += '<td><span class="status-badge status-on">' + item.kelas + '</span></td>';
+    html += '<td>' + item.tanggal + '</td>';
+    html += '<td>⏰ ' + item.jamMulai + ' - ' + item.jamSelesai + '</td>';
+    html += '<td>';
+    html += '<button class="btn btn-secondary btn-sm" onclick="editJadwal(' + index + ')">✏️ Edit</button>';
+    html += '<button class="btn btn-danger btn-sm" onclick="hapusJadwal(' + index + ')">🗑️ Hapus</button>';
+    html += '</td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
 }
 
 function updateSelectMapelSiswa() {
@@ -1425,6 +1614,7 @@ function loadDashboardData() {
   renderTabelSiswa();
   renderTabelSpreadsheet();
   renderTabelMapel();
+  renderTabelJadwal();
   updateSelectMapelImport();
 }
 
@@ -1893,14 +2083,14 @@ function exportToExcel() {
 
 function resetDataSiswa() {
   if (!confirm('Yakin ingin menghapus semua data siswa?')) return;
-  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload'].forEach(k => localStorage.removeItem(k));
+  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
   document.getElementById('statusResetSiswa').innerHTML = '<div class="alert-success">✅ Semua data siswa berhasil dihapus</div>';
   setTimeout(() => { document.getElementById('statusResetSiswa').innerHTML = ''; }, 3000);
 }
 
 function hapusDataTerEmbed() {
   if (!confirm('Yakin ingin menghapus semua data ter-embed dan data siswa? Semua bekas data ujian akan dibersihkan.')) return;
-  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload'].forEach(k => localStorage.removeItem(k));
+  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
   statusUjian = null; dataSiswa = null; jawaban = {}; pelanggaran = []; jumlahPelanggaran = 0; soalUrutan = []; urutanOpsiPerSoal = {}; waktuJawaban = {};
   ['nama','nomor','kelas','tokenUjian'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   ['soalContainer','resultArea','watermarkOverlay'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -1919,8 +2109,8 @@ function simpanPermanenKeHTML() {
     document.getElementById('menuAwal').style.display = savedState.menuAwal; document.getElementById('identityForm').style.display = savedState.identityForm; document.getElementById('dashboardGuru').style.display = savedState.dashboardGuru; document.getElementById('quizArea').style.display = savedState.quizArea; document.getElementById('resultArea').style.display = savedState.resultArea; document.getElementById('loginModal').style.display = savedState.loginModal; document.getElementById('resetModal').style.display = savedState.resetModal; document.getElementById('violationOverlay').style.display = savedState.violationOverlay;
     const newVersion = incrementVersion(HTML_VERSION);
     localStorage.setItem('htmlVersion', newVersion);
-    ['statusJudul','statusPassword','statusWaktu','statusImport','statusPengaturanNilai','statusMaxPelanggaran','statusGoogleSheet','statusResetSiswa','statusSimpanPermanen'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-    const newConfigBlock = '// __CONFIG_START__\nconst JUDUL_DEFAULT = ' + JSON.stringify(configJudul) + ';\nconst SUBJUDUL_DEFAULT = ' + JSON.stringify(configSubJudul) + ';\nconst PASSWORD_DEFAULT = ' + JSON.stringify(PASSWORD_GURU) + ';\nconst TOKEN_DEFAULT = ' + JSON.stringify(configToken) + ';\nconst GOOGLE_SHEET_URL_DEFAULT = ' + JSON.stringify(configGoogleSheetUrl) + ';\nconst DURASI_DEFAULT = ' + JSON.stringify(configDurasi) + ';\nconst JUMLAH_SOAL_DEFAULT = ' + JSON.stringify(configJumlahSoal) + ';\nconst ACAK_DEFAULT = ' + JSON.stringify(configAcak) + ';\nconst ACAK_OPSI_DEFAULT = ' + JSON.stringify(configAcakOpsi) + ';\nconst MAX_PELANGGARAN_DEFAULT = ' + JSON.stringify(configMaxPelanggaran) + ';\nconst NILAI_MAKSIMAL_DEFAULT = ' + JSON.stringify(configNilaiMaksimal) + ';\nconst NILAI_KKM_DEFAULT = ' + JSON.stringify(configNilaiKKM) + ';\nconst TAMPIL_NILAI_DEFAULT = ' + JSON.stringify(configTampilNilai) + ';\nconst DATA_SISWA_DEFAULT = ' + JSON.stringify(dataSiswaDb) + ';\nconst SPREADSHEET_MAP_DEFAULT = ' + JSON.stringify(spreadsheetMapDb) + ';\nconst MAPEL_DEFAULT = ' + JSON.stringify(mapelDb) + ';\nconst SOAL_MAPEL_DEFAULT = ' + JSON.stringify(soalMapelDb) + ';\nconst SOAL_DEFAULT = ' + JSON.stringify(soalAktif) + ';\n// __CONFIG_END__';
+    ['statusJudul','statusPassword','statusWaktu','statusImport','statusPengaturanNilai','statusMaxPelanggaran','statusGoogleSheet','statusResetSiswa','statusSimpanPermanen','statusJadwalDb','statusSiswaDb','statusSpreadsheetMap','statusMapelDb','statusSimpanPengaturan'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+    const newConfigBlock = '// __CONFIG_START__\nconst JUDUL_DEFAULT = ' + JSON.stringify(configJudul) + ';\nconst SUBJUDUL_DEFAULT = ' + JSON.stringify(configSubJudul) + ';\nconst PASSWORD_DEFAULT = ' + JSON.stringify(PASSWORD_GURU) + ';\nconst TOKEN_DEFAULT = ' + JSON.stringify(configToken) + ';\nconst GOOGLE_SHEET_URL_DEFAULT = ' + JSON.stringify(configGoogleSheetUrl) + ';\nconst DURASI_DEFAULT = ' + JSON.stringify(configDurasi) + ';\nconst JUMLAH_SOAL_DEFAULT = ' + JSON.stringify(configJumlahSoal) + ';\nconst ACAK_DEFAULT = ' + JSON.stringify(configAcak) + ';\nconst ACAK_OPSI_DEFAULT = ' + JSON.stringify(configAcakOpsi) + ';\nconst MAX_PELANGGARAN_DEFAULT = ' + JSON.stringify(configMaxPelanggaran) + ';\nconst NILAI_MAKSIMAL_DEFAULT = ' + JSON.stringify(configNilaiMaksimal) + ';\nconst NILAI_KKM_DEFAULT = ' + JSON.stringify(configNilaiKKM) + ';\nconst TAMPIL_NILAI_DEFAULT = ' + JSON.stringify(configTampilNilai) + ';\nconst DATA_SISWA_DEFAULT = ' + JSON.stringify(dataSiswaDb) + ';\nconst SPREADSHEET_MAP_DEFAULT = ' + JSON.stringify(spreadsheetMapDb) + ';\nconst MAPEL_DEFAULT = ' + JSON.stringify(mapelDb) + ';\nconst SOAL_MAPEL_DEFAULT = ' + JSON.stringify(soalMapelDb) + ';\nconst SOAL_DEFAULT = ' + JSON.stringify(soalAktif) + ';\nconst JADWAL_UJIAN_DEFAULT = ' + JSON.stringify(jadwalUjianDb) + ';\n// __CONFIG_END__';
     const newRuntimeConfigBlock = '// __RUNTIME_CONFIG_START__\nlet configDurasi = parseInt(localStorage.getItem(\'configDurasi\') || (typeof DURASI_DEFAULT !== \'undefined\' ? DURASI_DEFAULT : ' + configDurasi + '));\nlet configJumlahSoal = parseInt(localStorage.getItem(\'configJumlahSoal\') || (typeof JUMLAH_SOAL_DEFAULT !== \'undefined\' ? JUMLAH_SOAL_DEFAULT : ' + configJumlahSoal + '));\nlet configAcak = localStorage.getItem(\'configAcak\') !== null ? localStorage.getItem(\'configAcak\') === \'true\' : (typeof ACAK_DEFAULT !== \'undefined\' ? ACAK_DEFAULT : ' + configAcak + ');\nlet configAcakOpsi = localStorage.getItem(\'configAcakOpsi\') !== null ? localStorage.getItem(\'configAcakOpsi\') === \'true\' : (typeof ACAK_OPSI_DEFAULT !== \'undefined\' ? ACAK_OPSI_DEFAULT : ' + configAcakOpsi + ');\nlet configMaxPelanggaran = parseInt(localStorage.getItem(\'configMaxPelanggaran\') || (typeof MAX_PELANGGARAN_DEFAULT !== \'undefined\' ? MAX_PELANGGARAN_DEFAULT : ' + configMaxPelanggaran + '));\nlet configNilaiMaksimal = parseInt(localStorage.getItem(\'configNilaiMaksimal\') || (typeof NILAI_MAKSIMAL_DEFAULT !== \'undefined\' ? NILAI_MAKSIMAL_DEFAULT : ' + configNilaiMaksimal + '));\nlet configNilaiKKM = parseInt(localStorage.getItem(\'configNilaiKKM\') || (typeof NILAI_KKM_DEFAULT !== \'undefined\' ? NILAI_KKM_DEFAULT : ' + configNilaiKKM + '));\nlet configTampilNilai = localStorage.getItem(\'configTampilNilai\') !== null ? localStorage.getItem(\'configTampilNilai\') !== \'false\' : (typeof TAMPIL_NILAI_DEFAULT !== \'undefined\' ? TAMPIL_NILAI_DEFAULT : ' + configTampilNilai + ');\n// __RUNTIME_CONFIG_END__';
     html = html.replace(/\/\/ __CONFIG_START__[\s\S]*?\/\/ __CONFIG_END__/, () => newConfigBlock);
     html = html.replace(/\/\/ __RUNTIME_CONFIG_START__[\s\S]*?\/\/ __RUNTIME_CONFIG_END__/, () => newRuntimeConfigBlock);
@@ -2032,6 +2222,12 @@ function mulaiUjian() {
     }
   }
   const mapelSiswa = document.getElementById('selectMapelSiswa') ? document.getElementById('selectMapelSiswa').value : (mapelDb[0] || 'PAI');
+
+  if (!isJadwalSesuai(kelas, mapelSiswa)) {
+    alert('❌ Soal tidak keluar!\n\nData kelas (' + kelas + ') atau mata pelajaran (' + mapelSiswa + ') tidak sesuai dengan Jadwal Ujian yang ditentukan atau saat ini berada di luar batas waktu pengerjaan.');
+    return;
+  }
+
   dataSiswa = {nama: nama, nomor: nomor, kelas: kelas, mataPelajaran: mapelSiswa};
   if (soalMapelDb && soalMapelDb[mapelSiswa] && soalMapelDb[mapelSiswa].length > 0) {
     soalAktif = soalMapelDb[mapelSiswa];
