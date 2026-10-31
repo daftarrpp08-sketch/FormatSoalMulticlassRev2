@@ -249,9 +249,42 @@
   .crud-table th, .crud-table td { padding: 8px 10px; border: 1px solid var(--border-color); text-align: left; background: var(--bg-secondary); color: var(--text-primary); }
   .crud-table th { background: var(--bg-primary); font-weight: 600; }
   .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 4px; }
+  .network-badge {
+    position: fixed; top: 20px; left: 20px; z-index: 900;
+    padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow);
+    cursor: pointer; transition: all 0.3s ease; user-select: none;
+  }
+  .network-badge.online { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .network-badge.offline { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .dark-mode .network-badge.online { background: #064e3b; color: #6ee7b7; border-color: #047857; }
+  .dark-mode .network-badge.offline { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
+  .sync-pending-badge {
+    background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+    padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-left: 6px;
+  }
+  .dark-mode .sync-pending-badge { background: #78350f; color: #fde68a; border-color: #b45309; }
+  .autosave-toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+    background: #1f2937; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    display: none; align-items: center; gap: 8px; pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .autosave-toast.show { display: flex; animation: toastIn 0.3s ease; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 </head>
 <body oncontextmenu="return false;">
+
+<div id="networkStatusBadge" class="network-badge online" onclick="manualSyncPrompt()" title="Status Jaringan & Sinkronisasi">
+  <span id="networkDot">🟢</span> <span id="networkText">ONLINE</span>
+  <span id="queueCountBadge" class="sync-pending-badge" style="display:none;">0 pending</span>
+</div>
+
+<div id="autoSaveToast" class="autosave-toast">
+  <span>💾</span> <span id="autoSaveToastText">Perubahan otomatis disimpan</span>
+</div>
 
 <button class="dark-mode-toggle" onclick="toggleDarkMode()" title="Mode Gelap">🌙</button>
 
@@ -286,6 +319,7 @@
     <div class="form-group"><label>Kelas:</label><input type="text" id="kelas" placeholder="Contoh: XI DKV 1"></div>
     <div class="form-group"><label>Mata Pelajaran:</label><select id="selectMapelSiswa"></select></div>
     <div class="form-group"><label>Token Ujian:</label><input type="text" id="tokenUjian" placeholder="Masukkan token dari guru"></div>
+    <p class="info-small" style="margin-bottom:12px; text-align:center;">💾 Data formulir tersimpan otomatis di perangkat ini secara offline.</p>
     <div style="display:flex; gap:10px;">
       <button class="btn btn-success" onclick="mulaiUjian()" style="flex:1;">▶ Mulai Ujian (Fullscreen)</button>
       <button class="btn btn-secondary" onclick="kembaliKeMenu()">← Kembali</button>
@@ -722,10 +756,10 @@
     </div>
 
     <div class="panel panel-highlight" style="border-left: 4px solid var(--accent-blue);">
-      <h3>💾 12. Simpan Pengaturan</h3>
-      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-primary);">Simpan semua perubahan pengaturan yang telah Anda lakukan pada Dashboard Guru (Judul, Token, Password, Durasi, Nilai/KKM, Batas Pelanggaran, Spreadsheet, Database Siswa, Jadwal Ujian, Mata Pelajaran &amp; Soal) ke penyimpanan sistem.</p>
+      <h3>💾 12. Simpan Pengaturan &amp; Status Auto-Save</h3>
+      <p style="font-size:13px; margin:0 0 10px 0; color:var(--text-primary);">⚡ <strong>Simpan Otomatis Aktif:</strong> Setiap perubahan judul, token, durasi, KKM, batas pelanggaran, spreadsheet, dan database langsung tersimpan otomatis di perangkat saat OFFLINE tanpa harus klik tombol. Tombol di bawah tetap tersedia untuk memastikan seluruh pengaturan dan antrean sync terproses.</p>
       <div class="panel-row" style="margin-top:15px;">
-        <button class="btn btn-success" onclick="simpanSemuaPengaturan()" style="padding:12px 25px; font-size:15px;">💾 Simpan Pengaturan</button>
+        <button class="btn btn-success" onclick="simpanSemuaPengaturan()" style="padding:12px 25px; font-size:15px;">💾 Simpan &amp; Sync Semua Pengaturan</button>
       </div>
       <div id="statusSimpanPengaturan" style="margin-top:10px;"></div>
     </div>
@@ -953,6 +987,266 @@ const AppStorage = {
 
 AppStorage.init();
 
+// --- SISTEM INDIKATOR JARINGAN & TOAST AUTO-SAVE ---
+let autoSaveTimer = null;
+function tampilkanAutoSaveToast(pesan = 'Perubahan otomatis disimpan') {
+  const toast = document.getElementById('autoSaveToast');
+  const toastText = document.getElementById('autoSaveToastText');
+  if (!toast) return;
+  if (toastText) toastText.innerText = pesan;
+  toast.classList.add('show');
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 2200);
+}
+
+function updateNetworkStatusUI() {
+  const badge = document.getElementById('networkStatusBadge');
+  const dot = document.getElementById('networkDot');
+  const text = document.getElementById('networkText');
+  const queueBadge = document.getElementById('queueCountBadge');
+  if (!badge) return;
+
+  const isOnline = navigator.onLine;
+  const queue = getPendingSyncQueue();
+  const pendingCount = queue.length;
+
+  if (isOnline) {
+    badge.className = 'network-badge online';
+    if (dot) dot.innerText = '🟢';
+    if (text) text.innerText = 'ONLINE';
+  } else {
+    badge.className = 'network-badge offline';
+    if (dot) dot.innerText = '🔴';
+    if (text) text.innerText = 'OFFLINE';
+  }
+
+  if (queueBadge) {
+    if (pendingCount > 0) {
+      queueBadge.style.display = 'inline-block';
+      queueBadge.innerText = pendingCount + ' pending';
+      queueBadge.title = pendingCount + ' data ujian menunggu sinkronisasi internet';
+    } else {
+      queueBadge.style.display = 'none';
+    }
+  }
+}
+
+function manualSyncPrompt() {
+  const isOnline = navigator.onLine;
+  const queue = getPendingSyncQueue();
+  if (queue.length === 0) {
+    alert(isOnline
+      ? '🟢 Sistem terhubung ke Internet (ONLINE).\n\nSemua data sinkron dan tidak ada antrean pending.'
+      : '🔴 Sistem dalam kondisi OFFLINE.\n\nSeluruh data dan konfigurasi tersimpan aman di perangkat ini. Data ujian akan otomatis disinkronkan ke Google Spreadsheet saat perangkat terhubung ke internet.');
+    return;
+  }
+  if (!isOnline) {
+    alert('🔴 Sistem dalam kondisi OFFLINE.\n\nTerdapat ' + queue.length + ' hasil ujian yang menunggu terhubung ke internet.\n\nData tersimpan aman di HP/komputer ini dan akan otomatis dikirim begitu internet aktif.');
+    return;
+  }
+  if (confirm('🔄 Ada ' + queue.length + ' data hasil ujian dalam antrean sync.\n\nKoneksi Internet aktif (ONLINE). Jalankan sinkronisasi sekarang?')) {
+    prosesAntreanSheet();
+  }
+}
+
+// --- SISTEM ANTREAN SYNC OFFLINE-TO-ONLINE ---
+function getPendingSyncQueue() {
+  try {
+    return JSON.parse(localStorage.getItem('pendingSyncQueue') || '[]');
+  } catch(e) {
+    return [];
+  }
+}
+
+function setPendingSyncQueue(queue) {
+  try {
+    localStorage.setItem('pendingSyncQueue', JSON.stringify(queue));
+    AppStorage.setItem('pendingSyncQueue', JSON.stringify(queue));
+  } catch(e) {
+    console.warn('Gagal menyimpan pendingSyncQueue:', e);
+  }
+  updateNetworkStatusUI();
+}
+
+function tambahKeAntreanSync(item) {
+  const queue = getPendingSyncQueue();
+  // Cegah duplikasi persis berdasarkan nama, kelas, mataPelajaran, waktuSelesai
+  const exists = queue.some(q =>
+    q.payload && item.payload &&
+    q.payload.nama === item.payload.nama &&
+    q.payload.kelas === item.payload.kelas &&
+    q.payload.mataPelajaran === item.payload.mataPelajaran &&
+    q.payload.waktuSelesai === item.payload.waktuSelesai
+  );
+  if (!exists) {
+    queue.push(item);
+    setPendingSyncQueue(queue);
+  }
+}
+
+function simpanDraftIdentitasSiswa() {
+  const draft = {
+    nama: document.getElementById('nama') ? document.getElementById('nama').value : '',
+    nomor: document.getElementById('nomor') ? document.getElementById('nomor').value : '',
+    kelas: document.getElementById('kelas') ? document.getElementById('kelas').value : '',
+    mataPelajaran: document.getElementById('selectMapelSiswa') ? document.getElementById('selectMapelSiswa').value : '',
+    tokenUjian: document.getElementById('tokenUjian') ? document.getElementById('tokenUjian').value : ''
+  };
+  localStorage.setItem('draftIdentitasSiswa', JSON.stringify(draft));
+}
+
+function muatDraftIdentitasSiswa() {
+  try {
+    const draft = JSON.parse(localStorage.getItem('draftIdentitasSiswa') || 'null');
+    if (draft) {
+      if (document.getElementById('nama') && draft.nama) document.getElementById('nama').value = draft.nama;
+      if (document.getElementById('nomor') && draft.nomor) document.getElementById('nomor').value = draft.nomor;
+      if (document.getElementById('kelas') && draft.kelas) document.getElementById('kelas').value = draft.kelas;
+      if (document.getElementById('selectMapelSiswa') && draft.mataPelajaran) document.getElementById('selectMapelSiswa').value = draft.mataPelajaran;
+      if (document.getElementById('tokenUjian') && draft.tokenUjian) document.getElementById('tokenUjian').value = draft.tokenUjian;
+    }
+  } catch(e) {}
+}
+
+function pasangAutoSaveInputSiswa() {
+  ['nama', 'nomor', 'kelas', 'tokenUjian'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.removeEventListener('input', simpanDraftIdentitasSiswa);
+      el.addEventListener('input', simpanDraftIdentitasSiswa);
+    }
+  });
+  const mapelEl = document.getElementById('selectMapelSiswa');
+  if (mapelEl) {
+    mapelEl.removeEventListener('change', simpanDraftIdentitasSiswa);
+    mapelEl.addEventListener('change', simpanDraftIdentitasSiswa);
+  }
+}
+
+let debouncedAutoSaveTimer = null;
+function autoSaveDashboardGuru(fieldName = '') {
+  clearTimeout(debouncedAutoSaveTimer);
+  debouncedAutoSaveTimer = setTimeout(() => {
+    // 1. Simpan Judul & Subjudul & Token
+    const inJudul = document.getElementById('inputJudul');
+    const inSubJudul = document.getElementById('inputSubJudul');
+    const inToken = document.getElementById('inputToken');
+    if (inJudul && inJudul.value.trim()) {
+      configJudul = inJudul.value.trim();
+      localStorage.setItem('configJudul', configJudul);
+      AppStorage.setItem('configJudul', configJudul);
+    }
+    if (inSubJudul) {
+      configSubJudul = inSubJudul.value.trim();
+      localStorage.setItem('configSubJudul', configSubJudul);
+      AppStorage.setItem('configSubJudul', configSubJudul);
+    }
+    if (inToken && inToken.value.trim()) {
+      configToken = inToken.value.trim();
+      localStorage.setItem('configToken', configToken);
+      AppStorage.setItem('configToken', configToken);
+    }
+    updateJudulDiSemuaTempat();
+
+    // 2. Simpan Waktu & Jumlah Soal
+    const inWaktu = document.getElementById('inputWaktu');
+    if (inWaktu) {
+      const wVal = parseInt(inWaktu.value);
+      if (!isNaN(wVal) && wVal >= 1 && wVal <= 180) {
+        configDurasi = wVal;
+        localStorage.setItem('configDurasi', configDurasi);
+        AppStorage.setItem('configDurasi', configDurasi);
+      }
+    }
+    const inJumlahSoal = document.getElementById('inputJumlahSoal');
+    if (inJumlahSoal) {
+      const jVal = parseInt(inJumlahSoal.value);
+      if (!isNaN(jVal) && jVal >= 0) {
+        configJumlahSoal = jVal;
+        localStorage.setItem('configJumlahSoal', configJumlahSoal);
+        AppStorage.setItem('configJumlahSoal', configJumlahSoal);
+      }
+    }
+    updateInfoWaktu();
+
+    // 3. Simpan Nilai Maksimal, KKM, Tampil Nilai
+    const inMaxNilai = document.getElementById('inputNilaiMaksimal');
+    const inKkm = document.getElementById('inputNilaiKKM');
+    const inTampilNilai = document.getElementById('selectTampilNilai');
+    if (inMaxNilai && inKkm) {
+      const mVal = parseInt(inMaxNilai.value);
+      const kVal = parseInt(inKkm.value);
+      if (!isNaN(mVal) && mVal >= 10 && mVal <= 1000) {
+        configNilaiMaksimal = mVal;
+        localStorage.setItem('configNilaiMaksimal', configNilaiMaksimal);
+        AppStorage.setItem('configNilaiMaksimal', configNilaiMaksimal);
+      }
+      if (!isNaN(kVal) && kVal >= 0 && kVal <= configNilaiMaksimal) {
+        configNilaiKKM = kVal;
+        localStorage.setItem('configNilaiKKM', configNilaiKKM);
+        AppStorage.setItem('configNilaiKKM', configNilaiKKM);
+      }
+    }
+    if (inTampilNilai) {
+      configTampilNilai = inTampilNilai.value === 'true';
+      localStorage.setItem('configTampilNilai', configTampilNilai);
+      AppStorage.setItem('configTampilNilai', configTampilNilai);
+    }
+
+    // 4. Simpan Batas Pelanggaran
+    const inMaxPelanggaran = document.getElementById('inputMaxPelanggaran');
+    if (inMaxPelanggaran) {
+      const pVal = parseInt(inMaxPelanggaran.value);
+      if (!isNaN(pVal) && pVal >= 1 && pVal <= 20) {
+        configMaxPelanggaran = pVal;
+        localStorage.setItem('configMaxPelanggaran', configMaxPelanggaran);
+        AppStorage.setItem('configMaxPelanggaran', configMaxPelanggaran);
+        updateInfoWaktu();
+      }
+    }
+
+    // 5. Simpan Google Sheet URL
+    const inSheet = document.getElementById('inputGoogleSheet');
+    if (inSheet) {
+      configGoogleSheetUrl = inSheet.value.trim();
+      localStorage.setItem('configGoogleSheetUrl', configGoogleSheetUrl);
+      AppStorage.setItem('configGoogleSheetUrl', configGoogleSheetUrl);
+    }
+
+    tampilkanAutoSaveToast('💾 Perubahan ' + (fieldName || 'pengaturan') + ' tersimpan otomatis (Offline)');
+  }, 400);
+}
+
+function pasangAutoSaveDashboardGuru() {
+  const fieldMap = [
+    { id: 'inputJudul', name: 'Judul' },
+    { id: 'inputSubJudul', name: 'Subjudul' },
+    { id: 'inputToken', name: 'Token' },
+    { id: 'inputWaktu', name: 'Durasi Waktu' },
+    { id: 'inputJumlahSoal', name: 'Jumlah Soal' },
+    { id: 'inputNilaiMaksimal', name: 'Nilai Maksimal' },
+    { id: 'inputNilaiKKM', name: 'KKM' },
+    { id: 'inputMaxPelanggaran', name: 'Batas Pelanggaran' },
+    { id: 'inputGoogleSheet', name: 'URL Spreadsheet' }
+  ];
+
+  fieldMap.forEach(item => {
+    const el = document.getElementById(item.id);
+    if (el) {
+      el.oninput = () => autoSaveDashboardGuru(item.name);
+      el.onchange = () => autoSaveDashboardGuru(item.name);
+    }
+  });
+
+  const selectTampil = document.getElementById('selectTampilNilai');
+  if (selectTampil) {
+    selectTampil.onchange = () => autoSaveDashboardGuru('Tampilan Nilai');
+  }
+}
+
+
 let dataSiswaDb = JSON.parse(localStorage.getItem('dataSiswaDb') || 'null') || (typeof DATA_SISWA_DEFAULT !== 'undefined' ? DATA_SISWA_DEFAULT : []);
 let spreadsheetMapDb = JSON.parse(localStorage.getItem('spreadsheetMapDb') || 'null') || (typeof SPREADSHEET_MAP_DEFAULT !== 'undefined' ? SPREADSHEET_MAP_DEFAULT : []);
 let mapelDb = JSON.parse(localStorage.getItem('mapelDb') || 'null') || (typeof MAPEL_DEFAULT !== 'undefined' ? MAPEL_DEFAULT : ["PAI", "Informatika", "Matematika"]);
@@ -980,6 +1274,7 @@ function simpanMapelDb() {
   renderTabelMapel();
   updateSelectMapelSiswa();
   updateSelectMapelImport();
+  pasangAutoSaveDashboardGuru();
 }
 
 function simpanJadwalUjianDb() {
@@ -1067,8 +1362,12 @@ function simpanSemuaPengaturan() {
 
   const statusElem = document.getElementById('statusSimpanPengaturan');
   if (statusElem) {
-    statusElem.innerHTML = '<div class="alert-success">✅ <strong>Semua Pengaturan Berhasil Disimpan!</strong><br>Seluruh konfigurasi (Judul, Waktu, Nilai, Max Pelanggaran, Spreadsheet, Jadwal Ujian, Siswa, Mapel) telah tersimpan ke sistem.</div>';
+    statusElem.innerHTML = '<div class="alert-success">✅ <strong>Semua Pengaturan Berhasil Disimpan!</strong><br>Seluruh konfigurasi (Judul, Waktu, Nilai, Max Pelanggaran, Spreadsheet, Jadwal Ujian, Siswa, Mapel) telah tersimpan ke sistem (Offline &amp; Online).</div>';
     setTimeout(() => { statusElem.innerHTML = ''; }, 5000);
+  }
+  tampilkanAutoSaveToast('💾 Semua pengaturan disimpan & disinkronkan');
+  if (navigator.onLine && getPendingSyncQueue().length > 0) {
+    prosesAntreanSheet();
   }
 }
 
@@ -1488,6 +1787,16 @@ function tesKirimKelas(index) {
   });
 }
 
+function getTargetSpreadsheetUrl(kelas) {
+  if (spreadsheetMapDb && spreadsheetMapDb.length > 0 && kelas) {
+    const match = spreadsheetMapDb.find(item => item.kelas.trim().toLowerCase() === kelas.trim().toLowerCase());
+    if (match && match.url && match.url.trim()) {
+      return match.url.trim();
+    }
+  }
+  return configGoogleSheetUrl || '';
+}
+
 function sinkronDataKelas(index) {
   const item = spreadsheetMapDb[index];
   if (!item || !item.url) {
@@ -1495,29 +1804,33 @@ function sinkronDataKelas(index) {
     return;
   }
   const statusElem = document.getElementById('statusSpreadsheetMap');
+  const queue = getPendingSyncQueue();
+  const kelasItem = item.kelas.trim().toLowerCase();
 
-  // Check if current result belongs to this class and unsent
-  const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
-  let pendingCount = 0;
+  const matchingPending = queue.filter(q => q.payload && q.payload.kelas && q.payload.kelas.trim().toLowerCase() === kelasItem);
 
-  if (currentHasil && currentHasil.kelas && currentHasil.kelas.trim().toLowerCase() === item.kelas.trim().toLowerCase() && !currentHasil.isSent) {
-    pendingCount++;
-    if (statusElem) statusElem.innerHTML = '<div class="alert-info">⏳ Menyinkronkan data hasil nilai siswa kelas ' + item.kelas + ' ke Spreadsheet...</div>';
-    kirimKeGoogleSheetDirect(currentHasil.payload, item.url).then(success => {
-      if (success) {
-        currentHasil.isSent = true;
-        localStorage.setItem('hasilUjianTerakhir', JSON.stringify(currentHasil));
-        localStorage.removeItem('pendingSheetPayload');
-        if (statusElem) statusElem.innerHTML = '<div class="alert-success">✅ Sinkronisasi data kelas <strong>' + item.kelas + '</strong> BERHASIL! Data nilai terkirim.</div>';
-        if (statusUjian === 'selesai') {
-          tampilkanHasil(currentHasil.nilai, currentHasil.benar, currentHasil.autoSubmit);
-        }
+  if (matchingPending.length > 0) {
+    if (!navigator.onLine) {
+      if (statusElem) statusElem.innerHTML = '<div class="alert-error">❌ Perangkat OFFLINE. Terdapat ' + matchingPending.length + ' data kelas <strong>' + item.kelas + '</strong> dalam antrean yang akan otomatis terkirim saat online.</div>';
+      return;
+    }
+    if (statusElem) statusElem.innerHTML = '<div class="alert-info">⏳ Menyinkronkan ' + matchingPending.length + ' data hasil nilai siswa kelas ' + item.kelas + ' ke Spreadsheet...</div>';
+    prosesAntreanSheet().then(() => {
+      const remaining = getPendingSyncQueue().filter(q => q.payload && q.payload.kelas && q.payload.kelas.trim().toLowerCase() === kelasItem);
+      if (remaining.length === 0) {
+        if (statusElem) statusElem.innerHTML = '<div class="alert-success">✅ Sinkronisasi seluruh data kelas <strong>' + item.kelas + '</strong> BERHASIL!</div>';
       } else {
-        if (statusElem) statusElem.innerHTML = '<div class="alert-error">❌ Sinkronisasi data kelas <strong>' + item.kelas + '</strong> GAGAL. Coba periksa koneksi internet.</div>';
+        if (statusElem) statusElem.innerHTML = '<div class="alert-error">⚠️ Masih ada ' + remaining.length + ' data kelas ' + item.kelas + ' yang tertunda. Sistem akan mencoba lagi otomatis.</div>';
       }
     });
   } else {
-    if (statusElem) statusElem.innerHTML = '<div class="alert-success">✅ Semua data nilai untuk kelas <strong>' + item.kelas + '</strong> sudah tersinkronisasi.</div>';
+    // Check if currentHasil is unsent
+    const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
+    if (currentHasil && !currentHasil.isSent && currentHasil.kelas && currentHasil.kelas.trim().toLowerCase() === kelasItem) {
+      prosesAntreanSheet();
+    } else {
+      if (statusElem) statusElem.innerHTML = '<div class="alert-success">✅ Semua data nilai untuk kelas <strong>' + item.kelas + '</strong> sudah tersinkronisasi.</div>';
+    }
   }
 }
 
@@ -1581,7 +1894,7 @@ function updateJudulDiSemuaTempat() {
   if (pj) pj.innerText = configJudul; if (ps) ps.innerText = configSubJudul; if (pt) pt.innerText = configToken;
 }
 
-function bukaFormSiswa() { document.getElementById('menuAwal').style.display = 'none'; document.getElementById('identityForm').style.display = 'block'; updateSelectMapelSiswa(); updateInfoWaktu(); }
+function bukaFormSiswa() { document.getElementById('menuAwal').style.display = 'none'; document.getElementById('identityForm').style.display = 'block'; updateSelectMapelSiswa(); updateInfoWaktu(); muatDraftIdentitasSiswa(); pasangAutoSaveInputSiswa(); }
 function kembaliKeMenu() { document.getElementById('menuAwal').style.display = 'block'; document.getElementById('identityForm').style.display = 'none'; }
 function bukaLoginGuru() { document.getElementById('loginModal').style.display = 'flex'; document.getElementById('passwordLogin').value = ''; setTimeout(() => document.getElementById('passwordLogin').focus(), 100); }
 function prosesLogin() { const pwd = document.getElementById('passwordLogin').value; if (pwd === PASSWORD_GURU) { tutupModal('loginModal'); bukaDashboard(); } else { alert('❌ Password salah!'); } }
@@ -1616,6 +1929,7 @@ function loadDashboardData() {
   renderTabelMapel();
   renderTabelJadwal();
   updateSelectMapelImport();
+  pasangAutoSaveDashboardGuru();
 }
 
 function simpanPengaturanNilai() {
@@ -2083,14 +2397,14 @@ function exportToExcel() {
 
 function resetDataSiswa() {
   if (!confirm('Yakin ingin menghapus semua data siswa?')) return;
-  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
+  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','pendingSyncQueue','draftIdentitasSiswa','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
   document.getElementById('statusResetSiswa').innerHTML = '<div class="alert-success">✅ Semua data siswa berhasil dihapus</div>';
   setTimeout(() => { document.getElementById('statusResetSiswa').innerHTML = ''; }, 3000);
 }
 
 function hapusDataTerEmbed() {
   if (!confirm('Yakin ingin menghapus semua data ter-embed dan data siswa? Semua bekas data ujian akan dibersihkan.')) return;
-  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
+  ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','pendingSyncQueue','draftIdentitasSiswa','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k));
   statusUjian = null; dataSiswa = null; jawaban = {}; pelanggaran = []; jumlahPelanggaran = 0; soalUrutan = []; urutanOpsiPerSoal = {}; waktuJawaban = {};
   ['nama','nomor','kelas','tokenUjian'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   ['soalContainer','resultArea','watermarkOverlay'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -2268,7 +2582,16 @@ function tampilkanSoal() {
   document.getElementById('soalContainer').innerHTML = html; updateTampilanPelanggaran(); updateProgressBar();
 }
 
-function simpanJawaban(idx, val) { jawaban[idx] = val; waktuJawaban[idx] = Date.now(); localStorage.setItem('jawaban', JSON.stringify(jawaban)); localStorage.setItem('waktuJawaban', JSON.stringify(waktuJawaban)); updateProgressBar(); }
+function simpanJawaban(idx, val) {
+  jawaban[idx] = val;
+  waktuJawaban[idx] = Date.now();
+  localStorage.setItem('jawaban', JSON.stringify(jawaban));
+  localStorage.setItem('waktuJawaban', JSON.stringify(waktuJawaban));
+  AppStorage.setItem('jawaban', JSON.stringify(jawaban));
+  AppStorage.setItem('waktuJawaban', JSON.stringify(waktuJawaban));
+  updateProgressBar();
+  tampilkanAutoSaveToast('💾 Jawaban soal ' + (soalUrutan.indexOf(idx) + 1) + ' disimpan otomatis (Offline)');
+}
 
 function updateProgressBar() {
   const total = soalUrutan.length, answered = Object.keys(jawaban).filter(key => soalUrutan.includes(parseInt(key))).length;
@@ -2312,52 +2635,102 @@ async function kirimKeGoogleSheetDirect(payload, url) {
 }
 
 async function prosesAntreanSheet() {
-  const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
-  if (!currentHasil || currentHasil.isSent || isSendingSheet) return;
+  if (isSendingSheet) return;
+  const queue = getPendingSyncQueue();
+
+  // Pastikan legacy pendingSheetPayload masuk ke queue jika ada
+  const legacyPending = JSON.parse(localStorage.getItem('pendingSheetPayload') || 'null');
+  if (legacyPending) {
+    const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
+    const targetUrl = (currentHasil && currentHasil.targetUrl) || getTargetSpreadsheetUrl(legacyPending.kelas);
+    tambahKeAntreanSync({
+      id: 'legacy_' + Date.now(),
+      payload: legacyPending,
+      targetUrl: targetUrl,
+      timestamp: Date.now()
+    });
+    localStorage.removeItem('pendingSheetPayload');
+  }
+
+  const activeQueue = getPendingSyncQueue();
+  updateNetworkStatusUI();
+  if (activeQueue.length === 0) return;
+
+  if (!navigator.onLine) {
+    updateNetworkStatusUI();
+    const sheetStatusElem = document.getElementById('sheetSendingStatus');
+    if (sheetStatusElem) {
+      sheetStatusElem.innerHTML = '<div class="alert-info">📡 HP dalam kondisi Offline. Ada ' + activeQueue.length + ' data tersimpan aman &amp; akan otomatis terkirim ke Google Spreadsheet saat HP terkoneksi Internet.</div>';
+    }
+    return;
+  }
 
   const sheetStatusElem = document.getElementById('sheetSendingStatus');
-  if (sheetStatusElem) sheetStatusElem.innerHTML = '<div class="alert-info">⏳ Menghubungkan &amp; mengirim nilai tertunda ke Google Spreadsheet...</div>';
+  if (sheetStatusElem) {
+    sheetStatusElem.innerHTML = '<div class="alert-info">⏳ Menghubungkan &amp; menyinkronkan ' + activeQueue.length + ' data nilai ke Google Spreadsheet...</div>';
+  }
 
   isSendingSheet = true;
-  try {
-    const success = await kirimKeGoogleSheetDirect(currentHasil.payload, currentHasil.targetUrl);
+  const remainingQueue = [];
+  let successfulSends = 0;
+
+  for (let i = 0; i < activeQueue.length; i++) {
+    const item = activeQueue[i];
+    const url = item.targetUrl || getTargetSpreadsheetUrl(item.payload ? item.payload.kelas : '');
+    if (!url) {
+      // URL belum ada, simpan tetap di antrean
+      remainingQueue.push(item);
+      continue;
+    }
+    const success = await kirimKeGoogleSheetDirect(item.payload, url);
     if (success) {
-      currentHasil.isSent = true;
-      localStorage.setItem('hasilUjianTerakhir', JSON.stringify(currentHasil));
-      localStorage.removeItem('pendingSheetPayload');
-      if (sheetStatusElem) {
-        sheetStatusElem.innerHTML = '<div class="alert-success">✅ Data nilai sudah terkirim ke Google Spreadsheet.</div>';
+      successfulSends++;
+      // Update hasilUjianTerakhir jika cocok
+      const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
+      if (currentHasil && item.payload && currentHasil.nama === item.payload.nama && currentHasil.kelas === item.payload.kelas) {
+        currentHasil.isSent = true;
+        localStorage.setItem('hasilUjianTerakhir', JSON.stringify(currentHasil));
       }
-      if (statusUjian === 'selesai') {
-        tampilkanHasil(currentHasil.nilai, currentHasil.benar, currentHasil.autoSubmit);
-      }
+    } else {
+      remainingQueue.push(item);
     }
-  } catch (err) {
-    console.warn('Gagal memproses antrean pengiriman sheet:', err);
-    if (sheetStatusElem) {
-      sheetStatusElem.innerHTML = '<div class="alert-info">📡 HP dalam kondisi Offline. Nilai tersimpan aman di HP &amp; akan otomatis terkirim ke Google Spreadsheet saat HP terkoneksi Internet. <button onclick="prosesAntreanSheet()" class="btn btn-warning" style="padding:2px 8px; font-size:11px; margin-left:5px;">🔄 Coba Lagi</button></div>';
+  }
+
+  setPendingSyncQueue(remainingQueue);
+  isSendingSheet = false;
+  updateNetworkStatusUI();
+
+  if (successfulSends > 0) {
+    tampilkanAutoSaveToast('✅ ' + successfulSends + ' data berhasil disinkronkan ke Google Spreadsheet');
+  }
+
+  if (sheetStatusElem) {
+    if (remainingQueue.length === 0) {
+      sheetStatusElem.innerHTML = '<div class="alert-success">✅ Semua data nilai sudah berhasil disinkronkan ke Google Spreadsheet.</div>';
+    } else {
+      sheetStatusElem.innerHTML = '<div class="alert-info">📡 Masih ada ' + remainingQueue.length + ' data dalam antrean offline. Akan disinkronkan otomatis saat stabil. <button onclick="prosesAntreanSheet()" class="btn btn-warning" style="padding:2px 8px; font-size:11px; margin-left:5px;">🔄 Coba Lagi</button></div>';
     }
-  } finally {
-    isSendingSheet = false;
+  }
+
+  if (statusUjian === 'selesai') {
+    const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
+    if (currentHasil) {
+      tampilkanHasil(currentHasil.nilai, currentHasil.benar, currentHasil.autoSubmit);
+    }
   }
 }
 
 async function kirimKeGoogleSheet(payload, customUrl) {
-  const targetUrl = customUrl || configGoogleSheetUrl;
-  if (!targetUrl) return false;
+  const targetUrl = customUrl || getTargetSpreadsheetUrl(payload.kelas);
 
-  const currentHasil = JSON.parse(localStorage.getItem('hasilUjianTerakhir') || 'null');
-  if (currentHasil && currentHasil.isSent && currentHasil.nama === payload.nama && currentHasil.kelas === payload.kelas) {
-    console.log('Nilai sudah terkirim sebelumnya. Mencegah pengiriman berulang.');
-    return true;
-  }
+  // Buat queue item unik
+  const queueItem = {
+    id: 'sync_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    payload: payload,
+    targetUrl: targetUrl,
+    timestamp: Date.now()
+  };
 
-  const sheetStatusElem = document.getElementById('sheetSendingStatus');
-
-  if (isSendingSheet) return false;
-  isSendingSheet = true;
-
-  // Record payload locally so offline state and delivery status are tracked
   const record = {
     nama: payload.nama,
     kelas: payload.kelas,
@@ -2368,43 +2741,26 @@ async function kirimKeGoogleSheet(payload, customUrl) {
     targetUrl: targetUrl,
     isSent: false
   };
-  localStorage.setItem('hasilUjianTerakhir', JSON.stringify(record));
-  localStorage.setItem('pendingSheetPayload', JSON.stringify(payload));
 
-  if (!navigator.onLine) {
-    isSendingSheet = false;
+  // Simpan hasil lokal dan masukkan ke antrean persisten
+  localStorage.setItem('hasilUjianTerakhir', JSON.stringify(record));
+  AppStorage.setItem('hasilUjianTerakhir', JSON.stringify(record));
+  tambahKeAntreanSync(queueItem);
+
+  const sheetStatusElem = document.getElementById('sheetSendingStatus');
+
+  if (!navigator.onLine || !targetUrl) {
+    updateNetworkStatusUI();
     if (sheetStatusElem) {
       sheetStatusElem.innerHTML = '<div class="alert-info">📡 HP dalam kondisi Offline. Nilai tersimpan aman di HP &amp; akan otomatis terkirim ke Google Spreadsheet saat HP terkoneksi Internet.</div>';
     }
+    tampilkanAutoSaveToast('📡 Offline: Nilai tersimpan di HP, menunggu internet untuk sync');
     return false;
   }
 
-  if (sheetStatusElem) {
-    sheetStatusElem.innerHTML = '<div class="alert-info">⏳ Mengirim hasil nilai ke Google Spreadsheet...</div>';
-  }
-
-  try {
-    const success = await kirimKeGoogleSheetDirect(payload, targetUrl);
-    if (success) {
-      record.isSent = true;
-      localStorage.setItem('hasilUjianTerakhir', JSON.stringify(record));
-      localStorage.removeItem('pendingSheetPayload');
-      if (sheetStatusElem) {
-        sheetStatusElem.innerHTML = '<div class="alert-success">✅ Data nilai sudah terkirim ke Google Spreadsheet.</div>';
-      }
-      return true;
-    } else {
-      throw new Error('Network error or timeout');
-    }
-  } catch (err) {
-    console.error('Gagal mengirim ke Google Sheet:', err);
-    if (sheetStatusElem) {
-      sheetStatusElem.innerHTML = '<div class="alert-info">📡 HP dalam kondisi Offline. Nilai tersimpan aman di HP &amp; akan otomatis terkirim ke Google Spreadsheet saat HP terkoneksi Internet. <button onclick="prosesAntreanSheet()" class="btn btn-warning" style="padding:2px 8px; font-size:11px; margin-left:5px;">🔄 Coba Lagi</button></div>';
-    }
-    return false;
-  } finally {
-    isSendingSheet = false;
-  }
+  // Jika online, proses antrean langsung
+  await prosesAntreanSheet();
+  return true;
 }
 
 function submitUjian(isAutoSubmit) {
@@ -2413,40 +2769,43 @@ function submitUjian(isAutoSubmit) {
   const totalSoalCount = soalUrutan.length || 1;
   const nilai = Math.round((benar / totalSoalCount) * configNilaiMaksimal);
   const waktuSelesaiStr = new Date().toLocaleString('id-ID');
-  statusUjian = 'selesai'; localStorage.setItem('statusUjian', statusUjian); localStorage.setItem('nilai', nilai); localStorage.setItem('benar', benar);
-  localStorage.setItem('autoSubmit', isAutoSubmit); localStorage.setItem('waktuSelesai', waktuSelesaiStr);
+  statusUjian = 'selesai';
+  localStorage.setItem('statusUjian', statusUjian);
+  localStorage.setItem('nilai', nilai);
+  localStorage.setItem('benar', benar);
+  localStorage.setItem('autoSubmit', isAutoSubmit);
+  localStorage.setItem('waktuSelesai', waktuSelesaiStr);
+  AppStorage.setItem('statusUjian', statusUjian);
+  AppStorage.setItem('nilai', nilai);
+  AppStorage.setItem('benar', benar);
+  AppStorage.setItem('autoSubmit', isAutoSubmit);
+  AppStorage.setItem('waktuSelesai', waktuSelesaiStr);
+
+  // Bersihkan draft identitas siswa setelah ujian selesai dikumpulkan
+  localStorage.removeItem('draftIdentitasSiswa');
+
   isFullscreenActive = false; exitFullscreen(); hapusWatermark();
   tampilkanHasil(nilai, benar, isAutoSubmit);
 
   if (dataSiswa) {
-    // Scenario 2: Find URL for class in spreadsheetMapDb, fallback to configGoogleSheetUrl
-    let targetUrl = configGoogleSheetUrl;
-    if (spreadsheetMapDb && spreadsheetMapDb.length > 0) {
-      const match = spreadsheetMapDb.find(item => item.kelas.trim().toLowerCase() === dataSiswa.kelas.trim().toLowerCase());
-      if (match && match.url && match.url.trim()) {
-        targetUrl = match.url.trim();
-      }
-    }
-
-    if (targetUrl) {
-      const isLulus = nilai >= configNilaiKKM;
-      const payload = {
-        nama: dataSiswa.nama,
-        nomor: dataSiswa.nomor,
-        kelas: dataSiswa.kelas,
-        mataPelajaran: dataSiswa.mataPelajaran || ((mapelDb && mapelDb[0]) ? mapelDb[0] : "PAI"),
-        nilai: nilai,
-        nilaiMaksimal: configNilaiMaksimal,
-        kkm: configNilaiKKM,
-        statusKelulusan: isLulus ? "TUNTAS" : "BELUM TUNTAS",
-        benar: benar,
-        totalSoal: soalUrutan.length,
-        pelanggaran: jumlahPelanggaran,
-        autoSubmit: isAutoSubmit,
-        waktuSelesai: waktuSelesaiStr
-      };
-      kirimKeGoogleSheet(payload, targetUrl);
-    }
+    const targetUrl = getTargetSpreadsheetUrl(dataSiswa.kelas);
+    const isLulus = nilai >= configNilaiKKM;
+    const payload = {
+      nama: dataSiswa.nama,
+      nomor: dataSiswa.nomor,
+      kelas: dataSiswa.kelas,
+      mataPelajaran: dataSiswa.mataPelajaran || ((mapelDb && mapelDb[0]) ? mapelDb[0] : "PAI"),
+      nilai: nilai,
+      nilaiMaksimal: configNilaiMaksimal,
+      kkm: configNilaiKKM,
+      statusKelulusan: isLulus ? "TUNTAS" : "BELUM TUNTAS",
+      benar: benar,
+      totalSoal: soalUrutan.length,
+      pelanggaran: jumlahPelanggaran,
+      autoSubmit: isAutoSubmit,
+      waktuSelesai: waktuSelesaiStr
+    };
+    kirimKeGoogleSheet(payload, targetUrl);
   }
 }
 
@@ -2486,24 +2845,38 @@ function tutupModal(id) { document.getElementById(id).style.display = 'none'; }
 function bukaModalReset() { document.getElementById('resetModal').style.display = 'flex'; document.getElementById('passwordGuru').value = ''; }
 function konfirmasiReset() {
   const pwd = document.getElementById('passwordGuru').value;
-  if (pwd === PASSWORD_GURU) { if (confirm('Yakin ingin mereset ujian siswa ini?')) { ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload'].forEach(k => localStorage.removeItem(k)); isFullscreenActive = false; exitFullscreen(); hapusWatermark(); alert('Ujian berhasil direset!'); location.reload(); } } else { alert('Password salah!'); }
+  if (pwd === PASSWORD_GURU) { if (confirm('Yakin ingin mereset ujian siswa ini?')) { ['statusUjian','waktuMulai','jawaban','dataSiswa','pelanggaran','jumlahPelanggaran','nilai','benar','autoSubmit','waktuSelesai','soalUrutan','urutanOpsiPerSoal','waktuJawaban','pendingSheetPayload','pendingSyncQueue','draftIdentitasSiswa','hasilUjianTerakhir'].forEach(k => localStorage.removeItem(k)); isFullscreenActive = false; exitFullscreen(); hapusWatermark(); alert('Ujian berhasil direset!'); location.reload(); } } else { alert('Password salah!'); }
 }
 
 window.addEventListener('online', () => {
   console.log('Koneksi terdeteksi (online). Memproses antrean pengiriman nilai...');
+  updateNetworkStatusUI();
+  tampilkanAutoSaveToast('🌐 Terhubung ke Internet. Menyinkronkan data...');
   prosesAntreanSheet();
 });
 
+window.addEventListener('offline', () => {
+  console.log('Koneksi terputus (offline). Beralih ke penyimpanan lokal...');
+  updateNetworkStatusUI();
+  tampilkanAutoSaveToast('📡 Mode Offline aktif. Seluruh data tersimpan di perangkat.');
+});
+
+// Polling sinkronisasi antrean otomatis saat online
 setInterval(() => {
-  if (localStorage.getItem('pendingSheetPayload') && navigator.onLine) {
+  updateNetworkStatusUI();
+  if (navigator.onLine && getPendingSyncQueue().length > 0) {
     prosesAntreanSheet();
   }
-}, 10000);
+}, 5000);
 
 window.onload = function() {
   if (localStorage.getItem('darkMode') === 'true') { document.body.classList.add('dark-mode'); document.querySelector('.dark-mode-toggle').innerText = '☀️'; }
   updateJudulDiSemuaTempat();
   updateSelectMapelSiswa();
+  updateNetworkStatusUI();
+  if (navigator.onLine && getPendingSyncQueue().length > 0) {
+    prosesAntreanSheet();
+  }
   if (statusUjian === 'berlangsung') {
     waktuMulai = parseInt(localStorage.getItem('waktuMulai')); jumlahPelanggaran = parseInt(localStorage.getItem('jumlahPelanggaran') || '0');
     pelanggaran = JSON.parse(localStorage.getItem('pelanggaran') || '[]'); jawaban = JSON.parse(localStorage.getItem('jawaban') || '{}');
